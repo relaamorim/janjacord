@@ -9,6 +9,11 @@ const { autoUpdater } = require('electron-updater')
 
 const PAGINA_DE_DOWNLOADS = 'https://github.com/relaamorim/janjacord/releases/latest'
 
+// Para testes de desenvolvimento: --pasta-dados=<caminho> usa outra pasta de
+// dados, permitindo abrir um segundo JanjaCord sem brigar com o instalado
+const argPastaDados = process.argv.find((a) => a.startsWith('--pasta-dados='))
+if (argPastaDados) app.setPath('userData', argPastaDados.slice('--pasta-dados='.length))
+
 // Garante que só exista UM JanjaCord aberto: se o usuário clicar no atalho
 // com o app escondido na bandeja, a janela existente é trazida de volta.
 const souAUnicaInstancia = app.requestSingleInstanceLock()

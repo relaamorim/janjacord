@@ -10,6 +10,10 @@ Aplicativo para Windows estilo Discord: salas de voz com **compartilhamento de t
 4. Elas abrem o JanjaCord, digitam o código e clicam em **Entrar**.
 5. Pronto: todo mundo se ouve. Quem quiser mostra a tela clicando em **Compartilhar tela** — e podem ser **até duas telas ao mesmo tempo**.
 
+### Canais de voz
+
+Toda sala nasce com o canal **Geral**, e o **anfitrião** pode criar mais canais (botão **+** na barra lateral, até 8). Cada pessoa clica no canal em que quer ficar — você só **ouve** e só **vê a tela** de quem está no mesmo canal que você. Cada canal pode ter suas próprias **duas transmissões** simultâneas. O chat de texto continua sendo um só, da sala inteira.
+
 ### Dicas
 
 - O botão de **engrenagem** (no lobby e na sala) abre as configurações: escolha do **microfone** (útil para não pegar o microfone da webcam), da **saída de som** (fones ou alto-falantes) e da **qualidade da transmissão** (HD 720p ou Full HD 1080p). Tudo fica salvo para as próximas vezes, e a troca de microfone funciona até no meio da chamada.

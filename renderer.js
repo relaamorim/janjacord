@@ -28,6 +28,10 @@ const ORCAMENTO_TELA = 18_000_000 // total de ~18 Mbps de envio para a tela
 const TETO_TELA = 6_000_000       // com poucos espectadores: máximo por pessoa
 const PISO_TELA = 1_500_000       // com muitos espectadores: mínimo por pessoa
 
+// Canais de voz: toda sala nasce com o canal "Geral"
+const CANAL_PADRAO = { id: 'geral', nome: 'Geral' }
+const LIMITE_CANAIS = 8
+
 const estado = {
   nome: '',
   codigo: '',
@@ -41,9 +45,11 @@ const estado = {
   micMudo: false,
   streamTela: null,
   chamadasTela: new Map(),  // id -> chamada de vídeo que EU iniciei
-  transmissoes: new Map(),  // id -> { nome, stream, propria, tile } (até 2 telas no ar)
+  transmissoes: new Map(),  // id -> { nome, stream, propria, tile } (até 2 telas no ar por canal)
   layout: localStorage.getItem('mydisc-layout') || 'dividida', // 'dividida' ou 'foco'
   focoId: null,             // no modo foco: qual transmissão está grande
+  canais: [],               // canais de voz da sala: [{ id, nome }]
+  meuCanal: null,           // em qual canal de voz eu estou agora
   pararMeuMonitor: null,
   saindo: false,
   chatAberto: false,
@@ -127,6 +133,7 @@ function renderizarParticipantes() {
     ehAnfitriao: estado.souAnfitriao,
     mudo: estado.micMudo,
     transmitindo: estado.transmissoes.has(estado.meuId),
+    canal: estado.meuCanal,
     propria: true
   }]
 
@@ -138,11 +145,60 @@ function renderizarParticipantes() {
       ehAnfitriao: !!membro.ehAnfitriao,
       mudo: !!membro.mudo,
       transmitindo: estado.transmissoes.has(id),
+      canal: membro.canal,
       propria: false
     })
   }
 
-  for (const pessoa of todos) {
+  // Desenha cada canal com as pessoas que estão dentro dele
+  const canais = estado.canais.length ? estado.canais : [CANAL_PADRAO]
+  const canaisValidos = new Set(canais.map((c) => c.id))
+
+  for (const canal of canais) {
+    const bloco = document.createElement('li')
+    bloco.className = 'canal'
+
+    const cabecalho = document.createElement('div')
+    cabecalho.className = 'canal-cabecalho' + (canal.id === estado.meuCanal ? ' atual' : '')
+    cabecalho.title = canal.id === estado.meuCanal
+      ? 'Você está neste canal'
+      : 'Clique para entrar neste canal de voz'
+    cabecalho.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+      '<path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>'
+
+    const nomeCanal = document.createElement('span')
+    nomeCanal.textContent = canal.nome
+    cabecalho.appendChild(nomeCanal)
+
+    // Pessoas deste canal (quem tiver canal desconhecido cai no primeiro)
+    const pessoas = todos.filter((p) =>
+      p.canal === canal.id || (!canaisValidos.has(p.canal) && canal === canais[0])
+    )
+
+    const quantidade = document.createElement('span')
+    quantidade.className = 'canal-qtd'
+    quantidade.textContent = pessoas.length ? String(pessoas.length) : ''
+    cabecalho.appendChild(quantidade)
+
+    cabecalho.addEventListener('click', () => trocarDeCanal(canal.id))
+    bloco.appendChild(cabecalho)
+
+    const membrosDoCanal = document.createElement('ul')
+    membrosDoCanal.className = 'canal-membros'
+    for (const pessoa of pessoas) {
+      membrosDoCanal.appendChild(construirItemParticipante(pessoa))
+    }
+    bloco.appendChild(membrosDoCanal)
+
+    lista.appendChild(bloco)
+  }
+
+  $('contador-pessoas').textContent = String(todos.length)
+}
+
+// Monta o cartãozinho de uma pessoa (avatar, nome, estado e volume)
+function construirItemParticipante(pessoa) {
     const item = document.createElement('li')
     item.className = 'participante' + (pessoa.propria ? '' : ' remoto')
     item.dataset.id = pessoa.id
@@ -227,10 +283,7 @@ function renderizarParticipantes() {
       })
     }
 
-    lista.appendChild(item)
-  }
-
-  $('contador-pessoas').textContent = String(todos.length)
+    return item
 }
 
 function marcarFalando(id, falando) {
@@ -349,7 +402,12 @@ function tocarAudioDe(id, stream) {
 // chega um instante antes do aviso oficial de "fulano entrou")
 function garantirMembro(id, nome) {
   if (!estado.membros.has(id)) {
-    estado.membros.set(id, { nome: nome || 'Convidado', ehAnfitriao: false, mudo: false })
+    estado.membros.set(id, {
+      nome: nome || 'Convidado',
+      ehAnfitriao: false,
+      mudo: false,
+      canal: estado.meuCanal || CANAL_PADRAO.id
+    })
     renderizarParticipantes()
   } else if (nome) {
     estado.membros.get(id).nome = nome
@@ -369,8 +427,14 @@ function criarPeer(idDesejado) {
     if (meta.tipo === 'voz') {
       chamada.answer(estado.streamMic || undefined)
       const membro = garantirMembro(chamada.peer, meta.nome)
+      if (membro.chamadaVoz && membro.chamadaVoz !== chamada) {
+        try { membro.chamadaVoz.close() } catch (_) { /* ignora */ }
+      }
       membro.chamadaVoz = chamada
       chamada.on('stream', (stream) => tocarAudioDe(chamada.peer, stream))
+      chamada.on('close', () => {
+        if (membro.chamadaVoz === chamada) desligarVozDe(chamada.peer)
+      })
     }
 
     if (meta.tipo === 'tela') {
@@ -431,6 +495,8 @@ async function criarSala(tentativa = 0) {
   peer.on('open', async (id) => {
     estado.meuId = id
     $('botao-criar').disabled = false
+    estado.canais = [{ ...CANAL_PADRAO }]
+    estado.meuCanal = CANAL_PADRAO.id
     entrarNaTelaDaSala()
     atualizarStatus('conectado', 'Conectado')
     estado.streamMic = await obterMicrofone()
@@ -465,24 +531,27 @@ async function criarSala(tentativa = 0) {
       conexao.send({
         tipo: 'bemvindo',
         nomeAnfitriao: estado.nome,
+        canalAnfitriao: estado.meuCanal,
         codigo: estado.codigo,
+        canais: estado.canais,
         membros: [...estado.membros.entries()].map(([id, m]) => ({
-          id, nome: m.nome, mudo: !!m.mudo
+          id, nome: m.nome, mudo: !!m.mudo, canal: m.canal || CANAL_PADRAO.id
         })),
         historico: estado.historicoChat.slice(-50)
       })
 
-      // Avisa os demais
-      enviarParaTodos({ tipo: 'entrou', id: conexao.peer, nome: nomeNovo }, conexao.peer)
+      // Avisa os demais (quem chega sempre começa no canal Geral)
+      enviarParaTodos({ tipo: 'entrou', id: conexao.peer, nome: nomeNovo, canal: CANAL_PADRAO.id }, conexao.peer)
 
       const membro = garantirMembro(conexao.peer, nomeNovo)
       membro.conexaoDados = conexao
+      membro.canal = CANAL_PADRAO.id
       renderizarParticipantes()
       avisar(`${nomeNovo} entrou na sala.`, 'info')
       mensagemSistema(`${nomeNovo} entrou na sala`)
 
-      // Se eu já estava transmitindo a tela, incluo a pessoa nova
-      if (estado.streamTela) ligarTelaPara(conexao.peer)
+      // Se eu transmito no canal Geral, incluo a pessoa nova
+      if (estado.streamTela && estado.meuCanal === CANAL_PADRAO.id) ligarTelaPara(conexao.peer)
     })
 
     conexao.on('data', (mensagem) => tratarMensagemComoAnfitriao(conexao, mensagem))
@@ -512,6 +581,14 @@ function tratarMensagemComoAnfitriao(conexao, mensagem) {
     enviarParaTodos({
       tipo: 'compartilhando', id, nome: membro.nome, ativo: !!mensagem.ativo
     }, id)
+  }
+
+  if (mensagem.tipo === 'mudei-canal') {
+    // Confere se o canal existe antes de espalhar a mudança
+    if (!estado.canais.some((c) => c.id === mensagem.canal)) return
+    enviarParaTodos({ tipo: 'canal', id, canal: mensagem.canal }, id)
+    reagirMudancaDeCanal(id, mensagem.canal)
+    return
   }
 
   if (mensagem.tipo === 'chat') {
@@ -757,15 +834,25 @@ function tratarMensagemComoConvidado(mensagem, alarme) {
     clearTimeout(alarme)
     $('botao-entrar').disabled = false
 
+    // A lista de canais da sala (e eu começo no Geral)
+    estado.canais = mensagem.canais && mensagem.canais.length
+      ? mensagem.canais : [{ ...CANAL_PADRAO }]
+    estado.meuCanal = CANAL_PADRAO.id
+
     // O anfitrião entra na minha lista
     const idAnfitriao = PREFIXO_SALA + estado.codigo.toLowerCase()
     estado.membros.set(idAnfitriao, {
-      nome: mensagem.nomeAnfitriao, ehAnfitriao: true, mudo: false
+      nome: mensagem.nomeAnfitriao,
+      ehAnfitriao: true,
+      mudo: false,
+      canal: mensagem.canalAnfitriao || CANAL_PADRAO.id
     })
 
     // E os outros convidados também
     for (const m of mensagem.membros) {
-      estado.membros.set(m.id, { nome: m.nome, ehAnfitriao: false, mudo: !!m.mudo })
+      estado.membros.set(m.id, {
+        nome: m.nome, ehAnfitriao: false, mudo: !!m.mudo, canal: m.canal || CANAL_PADRAO.id
+      })
     }
 
     entrarNaTelaDaSala()
@@ -778,20 +865,35 @@ function tratarMensagemComoConvidado(mensagem, alarme) {
       renderizarMensagemChat(antiga, false, true)
     }
 
-    // EU liguei agora, então EU inicio a chamada de voz com cada um
-    for (const [id] of estado.membros) ligarVozPara(id)
+    // EU liguei agora, então EU inicio a chamada de voz — só com o meu canal
+    for (const [id, m] of estado.membros) {
+      if (m.canal === estado.meuCanal) ligarVozPara(id)
+    }
     renderizarParticipantes()
     return
   }
 
   if (mensagem.tipo === 'entrou') {
-    garantirMembro(mensagem.id, mensagem.nome)
+    const novato = garantirMembro(mensagem.id, mensagem.nome)
+    novato.canal = mensagem.canal || CANAL_PADRAO.id
     avisar(`${mensagem.nome} entrou na sala.`, 'info')
     mensagemSistema(`${mensagem.nome} entrou na sala`)
     renderizarParticipantes()
     // Quem chegou é quem liga para mim — eu só espero.
-    // Mas se EU estiver transmitindo a tela, envio para a pessoa nova:
-    if (estado.streamTela) ligarTelaPara(mensagem.id)
+    // Mas se EU estiver transmitindo no canal em que a pessoa caiu, envio a tela:
+    if (estado.streamTela && estado.meuCanal === novato.canal) ligarTelaPara(mensagem.id)
+    return
+  }
+
+  if (mensagem.tipo === 'novo-canal') {
+    estado.canais.push(mensagem.canal)
+    avisar(`Canal de voz "${mensagem.canal.nome}" criado!`, 'info')
+    renderizarParticipantes()
+    return
+  }
+
+  if (mensagem.tipo === 'canal') {
+    reagirMudancaDeCanal(mensagem.id, mensagem.canal)
     return
   }
 
@@ -827,13 +929,115 @@ function tratarMensagemComoConvidado(mensagem, alarme) {
 
 function ligarVozPara(id) {
   if (!estado.peer || !estado.streamMic) return
+  const membro = garantirMembro(id, null)
+  if (membro.chamadaVoz) return // já estamos conectados
   const chamada = estado.peer.call(id, estado.streamMic, {
     metadata: { tipo: 'voz', nome: estado.nome }
   })
   if (!chamada) return
-  const membro = garantirMembro(id, null)
   membro.chamadaVoz = chamada
   chamada.on('stream', (stream) => tocarAudioDe(id, stream))
+  chamada.on('close', () => {
+    if (membro.chamadaVoz === chamada) desligarVozDe(id)
+  })
+}
+
+// Encerra só a parte de VOZ com uma pessoa (usada ao trocar de canal)
+function desligarVozDe(id) {
+  const membro = estado.membros.get(id)
+  if (!membro) return
+  if (membro.chamadaVoz) {
+    const chamada = membro.chamadaVoz
+    membro.chamadaVoz = null
+    try { chamada.close() } catch (_) { /* ignora */ }
+  }
+  if (membro.audioEl) { membro.audioEl.remove(); membro.audioEl = null }
+  if (membro.pararMonitor) { membro.pararMonitor(); membro.pararMonitor = null }
+}
+
+// ============================================================
+// CANAIS DE VOZ
+// Você só ouve (e só vê a tela de) quem está no MESMO canal.
+// ============================================================
+
+function trocarDeCanal(novoCanal) {
+  if (!estado.peer || novoCanal === estado.meuCanal) return
+  estado.meuCanal = novoCanal
+
+  // Despede do canal antigo: para de ouvir e de ver as telas de lá
+  for (const [id, membro] of estado.membros) {
+    if (membro.canal !== novoCanal) {
+      desligarVozDe(id)
+      removerTransmissao(id)
+    }
+  }
+
+  // Cumprimenta o canal novo: quem se move é quem liga para os outros
+  for (const [id, membro] of estado.membros) {
+    if (membro.canal === novoCanal) ligarVozPara(id)
+  }
+
+  // Se eu estava transmitindo a tela, ela me acompanha para o canal novo
+  if (estado.streamTela) {
+    for (const [, chamada] of estado.chamadasTela) {
+      try { chamada.close() } catch (_) { /* ignora */ }
+    }
+    estado.chamadasTela.clear()
+    for (const [id, membro] of estado.membros) {
+      if (membro.canal === novoCanal) ligarTelaPara(id)
+    }
+  }
+
+  // Conta para a sala onde eu estou agora
+  if (estado.souAnfitriao) {
+    enviarParaTodos({ tipo: 'canal', id: estado.meuId, canal: novoCanal })
+  } else if (estado.conexaoAnfitriao && estado.conexaoAnfitriao.open) {
+    estado.conexaoAnfitriao.send({ tipo: 'mudei-canal', canal: novoCanal })
+  }
+
+  renderizarParticipantes()
+}
+
+// Alguém trocou de canal: ajusta voz e telas do meu lado
+function reagirMudancaDeCanal(id, canal) {
+  const membro = estado.membros.get(id)
+  if (!membro) return
+  membro.canal = canal
+
+  if (canal !== estado.meuCanal) {
+    // Saiu do meu canal: paro de ouvir e de ver a tela dele
+    desligarVozDe(id)
+    removerTransmissao(id)
+    const chamadaTela = estado.chamadasTela.get(id)
+    if (chamadaTela) {
+      try { chamadaTela.close() } catch (_) { /* ignora */ }
+      estado.chamadasTela.delete(id)
+      if (estado.streamTela) atualizarQualidadeDaTela()
+    }
+  } else {
+    // Entrou no meu canal: ele liga a voz para mim; se transmito, mando a tela
+    if (estado.streamTela) ligarTelaPara(id)
+  }
+
+  renderizarParticipantes()
+}
+
+// (só o anfitrião) cria um canal de voz novo e apresenta para a sala
+function criarCanal(nome) {
+  nome = String(nome || '').trim().slice(0, 20)
+  if (!nome) return
+  if (estado.canais.length >= LIMITE_CANAIS) {
+    avisar(`O máximo é ${LIMITE_CANAIS} canais de voz.`, 'erro')
+    return
+  }
+  const canal = {
+    id: 'canal-' + (estado.canais.length + 1) + '-' + Math.random().toString(36).slice(2, 6),
+    nome
+  }
+  estado.canais.push(canal)
+  enviarParaTodos({ tipo: 'novo-canal', canal })
+  renderizarParticipantes()
+  avisar(`Canal de voz "${nome}" criado!`)
 }
 
 function ligarMeuDetectorDeFala() {
@@ -910,8 +1114,10 @@ async function alternarCompartilhamento() {
     // Mostra minha própria tela no palco (sem som, para não dar eco)
     adicionarTransmissao(estado.meuId, estado.nome, stream, true)
 
-    // Envia a tela para todo mundo que está na sala
-    for (const [id] of estado.membros) ligarTelaPara(id)
+    // Envia a tela para quem está no MEU canal de voz
+    for (const [id, membro] of estado.membros) {
+      if (membro.canal === estado.meuCanal) ligarTelaPara(id)
+    }
 
     // Avisa a sala
     if (estado.souAnfitriao) {
@@ -931,6 +1137,7 @@ async function alternarCompartilhamento() {
 
 function ligarTelaPara(id) {
   if (!estado.peer || !estado.streamTela) return
+  if (estado.chamadasTela.has(id)) return // já estou enviando para essa pessoa
   const chamada = estado.peer.call(id, estado.streamTela, {
     metadata: { tipo: 'tela', nome: estado.nome }
   })
@@ -1330,6 +1537,8 @@ function aplicarResolucaoAoVivo() {
 
 function entrarNaTelaDaSala() {
   $('texto-codigo').textContent = estado.codigo
+  // Só o anfitrião pode criar canais de voz
+  $('botao-novo-canal').classList.toggle('escondido', !estado.souAnfitriao)
   trocarParaTela('tela-sala')
   renderizarParticipantes()
 }
@@ -1366,6 +1575,10 @@ function sairDaSala(motivo, silencioso = false) {
   estado.focoId = null
   estado.micMudo = false
   estado.souAnfitriao = false
+  estado.canais = []
+  estado.meuCanal = null
+  $('form-novo-canal').classList.add('escondido')
+  $('campo-novo-canal').value = ''
 
   // Tira todos os quadros de transmissão do palco
   for (const id of [...estado.transmissoes.keys()]) removerTransmissao(id, true)
@@ -1416,6 +1629,21 @@ $('campo-nome').addEventListener('keydown', (e) => {
 $('botao-mic').addEventListener('click', alternarMicrofone)
 $('botao-tela').addEventListener('click', alternarCompartilhamento)
 $('botao-sair').addEventListener('click', () => sairDaSala('Você saiu da sala.'))
+
+// Criação de canal de voz (botão + do anfitrião)
+$('botao-novo-canal').addEventListener('click', () => {
+  const form = $('form-novo-canal')
+  form.classList.toggle('escondido')
+  if (!form.classList.contains('escondido')) $('campo-novo-canal').focus()
+})
+$('campo-novo-canal').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    criarCanal($('campo-novo-canal').value)
+    $('campo-novo-canal').value = ''
+    $('form-novo-canal').classList.add('escondido')
+  }
+  if (e.key === 'Escape') $('form-novo-canal').classList.add('escondido')
+})
 
 $('botao-chat').addEventListener('click', abrirFecharChat)
 $('botao-enviar-chat').addEventListener('click', enviarMensagemChat)

@@ -82,7 +82,15 @@
 
     <div class="corpo-sala">
       <aside class="lateral">
-        <div class="lateral-titulo">NA SALA — <span id="contador-pessoas">1</span></div>
+        <div class="lateral-titulo">
+          <span>CANAIS DE VOZ — <span id="contador-pessoas">1</span></span>
+          <button id="botao-novo-canal" class="botao-mais escondido" title="Criar um canal de voz">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1z"/></svg>
+          </button>
+        </div>
+        <div id="form-novo-canal" class="form-novo-canal escondido">
+          <input id="campo-novo-canal" type="text" maxlength="20" placeholder="Nome do canal (Enter cria)" autocomplete="off" spellcheck="false">
+        </div>
         <ul id="lista-participantes" class="lista-participantes"></ul>
         <div class="lateral-dica">
           Compartilhe o código da sala para<br>chamar até <strong>10 pessoas</strong>.

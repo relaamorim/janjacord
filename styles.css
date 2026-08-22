@@ -327,6 +327,67 @@ input[type="text"]::placeholder { color: #5a637a; }
   letter-spacing: 1.5px;
   color: var(--texto-suave);
   padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.botao-mais {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--texto-suave);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.botao-mais:hover { color: var(--menta); background: var(--painel-claro); }
+
+.form-novo-canal { padding: 0 8px; }
+.form-novo-canal input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+/* ---------- canais de voz ---------- */
+
+.canal { margin-top: 4px; }
+
+.canal-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: var(--texto-suave);
+  font-family: var(--fonte-titulo);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.canal-cabecalho:hover { background: var(--painel-claro); color: var(--texto); }
+.canal-cabecalho.atual { color: var(--menta); }
+
+.canal-qtd {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 400;
+  color: #6b7490;
+}
+
+.canal-membros {
+  list-style: none;
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .lista-participantes {

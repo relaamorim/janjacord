@@ -1,6 +1,27 @@
-# JanjaCord 🟢
+# Janjord 🟢
 
-Aplicativo para Windows estilo Discord: salas de voz com **compartilhamento de tela em Full HD (1080p)** e **chat de texto**, para até **10 pessoas**, conectadas pela internet — sem precisar de conta nem de servidor pago.
+> **Nome oficial:** Janjord · **Codinome/meme:** JanjaCord
+>
+> *"A alternativa open source ao Discord que ninguém pediu."*
+
+Aplicativo para Windows: salas de voz com **compartilhamento de tela em Full HD (1080p)**, **canais de voz**, **chat de texto** e até **duas transmissões simultâneas** — para até **10 pessoas**, conectadas pela internet, **sem conta, sem cadastro e sem servidor pago**. Gratuito e de código aberto.
+
+### [⬇️ Baixar a última versão](https://github.com/relaamorim/janjacord/releases/latest)
+
+Baixe o **`JanjaCord Setup <versão>.exe`** (instalador com atualização automática) ou o **`JanjaCord <versão>.exe`** (portátil, sem instalar).
+
+## ⚠️ Atenção: o Windows mostra um aviso na instalação
+
+O Janjord ainda **não tem assinatura digital** — esse certificado custa caro por ano, e este é um projeto gratuito e de código aberto. Por causa disso, na primeira execução o Windows mostra a tela azul do SmartScreen dizendo que o aplicativo é "desconhecido". **Isso é esperado, e a instalação é segura**: todo o código-fonte está aberto aqui neste repositório, para qualquer pessoa auditar.
+
+**Passo a passo para continuar a instalação:**
+
+1. Baixe o instalador na página de [Releases](https://github.com/relaamorim/janjacord/releases/latest) e execute.
+2. Se aparecer a janela azul **"O Windows protegeu o computador"**, clique em **"Mais informações"**.
+3. Vai surgir o botão **"Executar assim mesmo"** — clique nele.
+4. Pronto! A instalação segue normalmente, cria o atalho e abre o aplicativo.
+
+> 💡 Alguns navegadores também desconfiam na hora do download. No **Chrome/Edge**, se o download for marcado como "não verificado", clique nos três pontinhos ao lado do arquivo baixado e escolha **"Manter"** (e depois "Manter assim mesmo", se ele perguntar de novo).
 
 ## Como usar
 
@@ -73,6 +94,14 @@ Pronto: a versão sobe para o GitHub e todos os usuários recebem automaticament
 - **PeerJS** — serviço gratuito usado só no começo, como "ponto de encontro": é ele que faz o código da sala levar até o computador do anfitrião.
 - **Full HD** — a captura é pedida em 1920×1080 a 30 quadros/s, com prioridade para **manter a resolução** (texto nítido) mesmo se a rede oscilar. Como quem transmite envia uma cópia para cada espectador, o aplicativo **divide automaticamente** um orçamento de ~18 Mbps entre eles (com 2 espectadores, até 6 Mbps cada; com 9, cerca de 2 Mbps cada).
 - **Chat de texto** — as mensagens passam pelo anfitrião, que as distribui para todos e guarda as últimas 50 para mostrar a quem chegar depois.
+
+## Contribuindo
+
+Achou um problema ou tem uma ideia? Abra uma [issue](https://github.com/relaamorim/janjacord/issues). Quer mexer no código? O projeto é propositalmente simples: HTML, CSS e JavaScript puros com Electron — sem frameworks. Faça um fork, rode `npm install` e `npm start`, e mande seu pull request.
+
+## Licença
+
+[MIT](LICENSE) — use, copie, modifique e distribua à vontade, inclusive comercialmente. Só mantenha o aviso de copyright.
 
 ## Limitações conhecidas
 

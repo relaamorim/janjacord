@@ -14,6 +14,9 @@
 
   <!-- ==================== TELA DE ENTRADA (LOBBY) ==================== -->
   <section id="tela-lobby" class="tela ativa">
+    <button id="botao-config-lobby" class="botao-engrenagem" title="Configurações de som e transmissão">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-1.7-7h3.4l.5 2.4c.6.2 1.1.5 1.6.9l2.3-.8 1.7 3-1.8 1.6a6.9 6.9 0 0 1 0 1.8l1.8 1.6-1.7 3-2.3-.8c-.5.4-1 .7-1.6.9l-.5 2.4h-3.4l-.5-2.4a6.5 6.5 0 0 1-1.6-.9l-2.3.8-1.7-3 1.8-1.6a6.9 6.9 0 0 1 0-1.8L4.2 8.5l1.7-3 2.3.8c.5-.4 1-.7 1.6-.9L10.3 3z"/></svg>
+    </button>
     <div class="fundo-decorativo" aria-hidden="true">
       <div class="mancha mancha-menta"></div>
       <div class="mancha mancha-coral"></div>
@@ -131,6 +134,10 @@
         <span id="texto-botao-tela">Compartilhar tela</span>
       </button>
 
+      <button id="botao-config" class="controle" title="Configurações de som e transmissão">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-1.7-7h3.4l.5 2.4c.6.2 1.1.5 1.6.9l2.3-.8 1.7 3-1.8 1.6a6.9 6.9 0 0 1 0 1.8l1.8 1.6-1.7 3-2.3-.8c-.5.4-1 .7-1.6.9l-.5 2.4h-3.4l-.5-2.4a6.5 6.5 0 0 1-1.6-.9l-2.3.8-1.7-3 1.8-1.6a6.9 6.9 0 0 1 0-1.8L4.2 8.5l1.7-3 2.3.8c.5-.4 1-.7 1.6-.9L10.3 3z"/></svg>
+      </button>
+
       <button id="botao-chat" class="controle" title="Abrir / fechar o chat">
         <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8.4L4 21.6A1 1 0 0 1 2.4 20.8V5A2 2 0 0 1 4 3zm0 2v13.2L7.6 16H20V5H4zm3 3h10v2H7V8zm0 4h7v2H7v-2z"/></svg>
         <span id="selo-chat" class="selo escondido">0</span>
@@ -163,6 +170,43 @@
       <div class="modal-botoes">
         <button id="botao-cancelar-fonte" class="botao botao-fantasma">Cancelar</button>
         <button id="botao-confirmar-fonte" class="botao botao-principal" disabled>Compartilhar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CONFIGURAÇÕES ==================== -->
+  <div id="modal-config" class="modal-fundo escondido">
+    <div class="modal-caixa modal-config">
+      <h2 class="modal-titulo">Configurações</h2>
+
+      <label class="campo">
+        <span class="campo-rotulo">Microfone (entrada de som)</span>
+        <select id="seletor-mic" class="seletor"></select>
+      </label>
+
+      <label class="campo">
+        <span class="campo-rotulo">Saída de som (fones ou alto-falantes)</span>
+        <select id="seletor-saida" class="seletor"></select>
+      </label>
+
+      <div class="campo">
+        <span class="campo-rotulo">Qualidade da transmissão de tela</span>
+        <div class="opcoes-resolucao">
+          <label class="opcao-resolucao">
+            <input type="radio" name="resolucao" value="720">
+            <span>HD · 720p</span>
+            <small>usa menos internet</small>
+          </label>
+          <label class="opcao-resolucao">
+            <input type="radio" name="resolucao" value="1080">
+            <span>Full HD · 1080p</span>
+            <small>nitidez máxima</small>
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-botoes">
+        <button id="botao-fechar-config" class="botao botao-principal">Pronto</button>
       </div>
     </div>
   </div>

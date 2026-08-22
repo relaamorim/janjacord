@@ -50,6 +50,12 @@ const estado = {
 
 let contextoAudio = null // usado para detectar quem está falando
 
+// ---------- preferências salvas (ficam guardadas entre um uso e outro) ----------
+
+const prefMic = () => localStorage.getItem('mydisc-mic') || ''            // '' = padrão do Windows
+const prefSaida = () => localStorage.getItem('mydisc-saida') || ''        // '' = padrão do Windows
+const prefResolucao = () => localStorage.getItem('mydisc-resolucao') || '1080'
+
 // ---------- avisos rápidos (toasts) ----------
 
 function avisar(mensagem, tipo = 'ok') {
@@ -117,7 +123,8 @@ function renderizarParticipantes() {
     nomeCor: estado.nome,
     ehAnfitriao: estado.souAnfitriao,
     mudo: estado.micMudo,
-    transmitindo: estado.compartilhandoId === estado.meuId
+    transmitindo: estado.compartilhandoId === estado.meuId,
+    propria: true
   }]
 
   for (const [id, membro] of estado.membros) {
@@ -127,14 +134,18 @@ function renderizarParticipantes() {
       nomeCor: membro.nome,
       ehAnfitriao: !!membro.ehAnfitriao,
       mudo: !!membro.mudo,
-      transmitindo: estado.compartilhandoId === id
+      transmitindo: estado.compartilhandoId === id,
+      propria: false
     })
   }
 
   for (const pessoa of todos) {
     const item = document.createElement('li')
-    item.className = 'participante'
+    item.className = 'participante' + (pessoa.propria ? '' : ' remoto')
     item.dataset.id = pessoa.id
+
+    const linha = document.createElement('div')
+    linha.className = 'participante-linha'
 
     const avatar = document.createElement('div')
     avatar.className = 'avatar'
@@ -161,13 +172,56 @@ function renderizarParticipantes() {
       info.appendChild(rotulo)
     }
 
-    item.appendChild(avatar)
-    item.appendChild(info)
+    linha.appendChild(avatar)
+    linha.appendChild(info)
 
     if (pessoa.mudo) {
-      item.insertAdjacentHTML('beforeend',
+      linha.insertAdjacentHTML('beforeend',
         '<svg class="icone-mudo" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
         '<path fill="currentColor" d="M3.3 2.3 21.7 20.7l-1.4 1.4-4.2-4.2A6.96 6.96 0 0 1 13 18.9V21h-2v-2.08A7 7 0 0 1 5 11h2a5 5 0 0 0 7.6 4.27l-1.5-1.5A3 3 0 0 1 9 11v-.76L1.9 3.7l1.4-1.4zM15 11c0 .17-.01.33-.04.49L9.5 6.03V6a3 3 0 1 1 6 0v5h-.5zm4 0h-2c0 .61-.11 1.2-.31 1.74l1.51 1.51c.51-.98.8-2.08.8-3.25z"/></svg>')
+    }
+
+    item.appendChild(linha)
+
+    // Nas outras pessoas, clicar abre um controle de volume só para ela
+    if (!pessoa.propria) {
+      const membro = estado.membros.get(pessoa.id)
+      linha.title = 'Clique para ajustar o volume desta pessoa'
+
+      const linhaVolume = document.createElement('div')
+      linhaVolume.className = 'linha-volume'
+
+      const controle = document.createElement('input')
+      controle.type = 'range'
+      controle.min = '0'
+      controle.max = '100'
+      controle.value = String(membro && membro.volume != null ? membro.volume : 100)
+
+      const valor = document.createElement('span')
+      valor.className = 'valor-volume'
+      valor.textContent = controle.value + '%'
+
+      controle.addEventListener('input', () => {
+        const v = Number(controle.value)
+        valor.textContent = v + '%'
+        if (membro) {
+          membro.volume = v
+          if (membro.audioEl) membro.audioEl.volume = v / 100
+        }
+      })
+      linhaVolume.addEventListener('click', (e) => e.stopPropagation())
+
+      linhaVolume.appendChild(controle)
+      linhaVolume.appendChild(valor)
+      item.appendChild(linhaVolume)
+
+      if (membro && membro.volumeAberto) item.classList.add('volume-aberto')
+
+      linha.addEventListener('click', () => {
+        if (!membro) return
+        membro.volumeAberto = !membro.volumeAberto
+        item.classList.toggle('volume-aberto', membro.volumeAberto)
+      })
     }
 
     lista.appendChild(item)
@@ -185,23 +239,43 @@ function marcarFalando(id, falando) {
 // MICROFONE E DETECÇÃO DE FALA
 // ============================================================
 
+// Monta o pedido de microfone respeitando o aparelho escolhido nas configurações
+function restricoesDeMicrofone() {
+  const restricoes = { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+  if (prefMic()) restricoes.deviceId = { exact: prefMic() }
+  return { audio: restricoes }
+}
+
 // Tenta abrir o microfone; se não houver, cria um áudio silencioso
 // (assim a conexão de voz funciona mesmo sem microfone — só para ouvir)
 async function obterMicrofone() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    })
+    const stream = await navigator.mediaDevices.getUserMedia(restricoesDeMicrofone())
     estado.micEhSilencioso = false
     return stream
-  } catch (erro) {
-    console.log('Sem microfone disponível:', erro.name)
-    estado.micEhSilencioso = true
-    avisar('Microfone não encontrado — você entrou apenas para ouvir.', 'info')
-    const ctx = obterContextoAudio()
-    const destino = ctx.createMediaStreamDestination()
-    return destino.stream
+  } catch (primeiroErro) {
+    // O microfone escolhido pode ter sido desconectado — tenta o padrão
+    if (prefMic()) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        })
+        estado.micEhSilencioso = false
+        avisar('O microfone escolhido não foi encontrado — usando o padrão do Windows.', 'info')
+        return stream
+      } catch (_) { /* segue para o plano C logo abaixo */ }
+    }
+    return microfoneSilencioso(primeiroErro)
   }
+}
+
+function microfoneSilencioso(erro) {
+  console.log('Sem microfone disponível:', erro.name)
+  estado.micEhSilencioso = true
+  avisar('Microfone não encontrado — você entrou apenas para ouvir.', 'info')
+  const ctx = obterContextoAudio()
+  const destino = ctx.createMediaStreamDestination()
+  return destino.stream
 }
 
 function obterContextoAudio() {
@@ -253,6 +327,11 @@ function tocarAudioDe(id, stream) {
   const audio = document.createElement('audio')
   audio.autoplay = true
   audio.srcObject = stream
+  // Respeita o volume individual e a saída de som escolhida nas configurações
+  audio.volume = (membro.volume != null ? membro.volume : 100) / 100
+  if (prefSaida() && audio.setSinkId) {
+    audio.setSinkId(prefSaida()).catch(() => { /* saída não existe mais: usa a padrão */ })
+  }
   $('area-audios').appendChild(audio)
 
   membro.audioEl = audio
@@ -817,12 +896,14 @@ async function alternarCompartilhamento() {
   }
 
   try {
-    // Pede a captura em Full HD (1920x1080) a 30 quadros por segundo.
+    // Pede a captura na resolução escolhida nas configurações
+    // (Full HD 1920x1080 ou HD 1280x720), a 30 quadros por segundo.
     // O Electron vai abrir o nosso seletor de tela/janela.
+    const emHd = prefResolucao() === '720'
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
+        width: { ideal: emHd ? 1280 : 1920 },
+        height: { ideal: emHd ? 720 : 1080 },
         frameRate: { ideal: 30, max: 60 }
       },
       audio: true // o som do sistema só vem se a caixinha for marcada
@@ -953,6 +1034,9 @@ function mostrarTelaRemota(id, nome, stream) {
   const video = $('video-tela')
   video.srcObject = stream
   video.muted = false // se vier som do sistema, queremos ouvir
+  if (prefSaida() && video.setSinkId) {
+    video.setSinkId(prefSaida()).catch(() => { /* saída não existe mais: usa a padrão */ })
+  }
   $('texto-compartilhando').textContent = `Tela de ${estado.compartilhandoNome}`
   renderizarParticipantes()
 }
@@ -1055,6 +1139,122 @@ function confirmarFonte() {
 function cancelarFonte() {
   window.mydisc.responderFonte(null)
   $('modal-seletor').classList.add('escondido')
+}
+
+// ============================================================
+// CONFIGURAÇÕES (microfone, saída de som e resolução)
+// ============================================================
+
+async function abrirConfiguracoes() {
+  $('modal-config').classList.remove('escondido')
+
+  // Marca a resolução salva
+  const salva = prefResolucao()
+  document.querySelectorAll('input[name="resolucao"]').forEach((radio) => {
+    radio.checked = radio.value === salva
+  })
+
+  await preencherListaDeAparelhos()
+}
+
+function fecharConfiguracoes() {
+  $('modal-config').classList.add('escondido')
+}
+
+// Preenche as listas de microfones e saídas de som do computador
+async function preencherListaDeAparelhos() {
+  // O Windows só revela os NOMES dos aparelhos depois de uma permissão de
+  // áudio; se ainda não temos microfone aberto, pedimos um por um instante.
+  let temporario = null
+  try {
+    if (!estado.streamMic || estado.micEhSilencioso) {
+      temporario = await navigator.mediaDevices.getUserMedia({ audio: true })
+    }
+  } catch (_) { /* sem microfone nenhum: as listas ficam genéricas */ }
+
+  const aparelhos = await navigator.mediaDevices.enumerateDevices()
+  if (temporario) temporario.getTracks().forEach((t) => t.stop())
+
+  montarSeletor($('seletor-mic'), aparelhos.filter((a) => a.kind === 'audioinput'),
+    prefMic(), 'Microfone')
+  montarSeletor($('seletor-saida'), aparelhos.filter((a) => a.kind === 'audiooutput'),
+    prefSaida(), 'Saída')
+}
+
+function montarSeletor(seletor, aparelhos, escolhido, apelido) {
+  seletor.innerHTML = ''
+
+  const padrao = document.createElement('option')
+  padrao.value = ''
+  padrao.textContent = 'Padrão do Windows'
+  seletor.appendChild(padrao)
+
+  let numero = 1
+  for (const aparelho of aparelhos) {
+    if (aparelho.deviceId === 'default' || aparelho.deviceId === 'communications') continue
+    const opcao = document.createElement('option')
+    opcao.value = aparelho.deviceId
+    opcao.textContent = aparelho.label || `${apelido} ${numero}`
+    seletor.appendChild(opcao)
+    numero++
+  }
+
+  seletor.value = escolhido
+  if (seletor.value !== escolhido) seletor.value = '' // aparelho sumiu: volta ao padrão
+}
+
+// Troca o microfone NO MEIO da chamada, sem derrubar ninguém:
+// substitui a trilha de áudio dentro de cada conexão já aberta
+async function aplicarNovoMicrofone() {
+  if (!estado.peer) return // fora da sala, a escolha vale na próxima entrada
+
+  try {
+    const novoStream = await navigator.mediaDevices.getUserMedia(restricoesDeMicrofone())
+    const novaTrilha = novoStream.getAudioTracks()[0]
+    novaTrilha.enabled = !estado.micMudo
+
+    for (const [, membro] of estado.membros) {
+      const conexao = membro.chamadaVoz && membro.chamadaVoz.peerConnection
+      const remetente = conexao &&
+        conexao.getSenders().find((s) => s.track && s.track.kind === 'audio')
+      if (remetente) remetente.replaceTrack(novaTrilha).catch(() => { /* ignora */ })
+    }
+
+    if (estado.streamMic) {
+      estado.streamMic.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+    }
+    estado.streamMic = novoStream
+    estado.micEhSilencioso = false
+    ligarMeuDetectorDeFala()
+    avisar('Microfone trocado!')
+  } catch (_) {
+    avisar('Não consegui usar esse microfone. Confira se ele está conectado.', 'erro')
+  }
+}
+
+// Aplica a saída de som escolhida em tudo que toca áudio
+function aplicarSaidaDeSom() {
+  const id = prefSaida()
+  for (const [, membro] of estado.membros) {
+    if (membro.audioEl && membro.audioEl.setSinkId) {
+      membro.audioEl.setSinkId(id || '').catch(() => { /* ignora */ })
+    }
+  }
+  const video = $('video-tela')
+  if (video.setSinkId) video.setSinkId(id || '').catch(() => { /* ignora */ })
+}
+
+// Aplica a nova resolução em uma transmissão que já está no ar
+function aplicarResolucaoAoVivo() {
+  if (!estado.streamTela) return
+  const emHd = prefResolucao() === '720'
+  const trilha = estado.streamTela.getVideoTracks()[0]
+  if (trilha) {
+    trilha.applyConstraints({
+      width: { ideal: emHd ? 1280 : 1920 },
+      height: { ideal: emHd ? 720 : 1080 }
+    }).catch(() => { /* ignora */ })
+  }
 }
 
 // ============================================================
@@ -1168,9 +1368,41 @@ $('aba-janelas').addEventListener('click', () => { abaAtual = 'janela'; atualiza
 $('botao-confirmar-fonte').addEventListener('click', confirmarFonte)
 $('botao-cancelar-fonte').addEventListener('click', cancelarFonte)
 
+// ---------- configurações ----------
+
+$('botao-config').addEventListener('click', abrirConfiguracoes)
+$('botao-config-lobby').addEventListener('click', abrirConfiguracoes)
+$('botao-fechar-config').addEventListener('click', fecharConfiguracoes)
+
+$('seletor-mic').addEventListener('change', () => {
+  localStorage.setItem('mydisc-mic', $('seletor-mic').value)
+  aplicarNovoMicrofone()
+})
+
+$('seletor-saida').addEventListener('change', () => {
+  localStorage.setItem('mydisc-saida', $('seletor-saida').value)
+  aplicarSaidaDeSom()
+})
+
+document.querySelectorAll('input[name="resolucao"]').forEach((radio) => {
+  radio.addEventListener('change', () => {
+    if (!radio.checked) return
+    localStorage.setItem('mydisc-resolucao', radio.value)
+    aplicarResolucaoAoVivo()
+  })
+})
+
+// Se um aparelho for plugado/desplugado com a janela aberta, atualiza as listas
+navigator.mediaDevices.addEventListener('devicechange', () => {
+  if (!$('modal-config').classList.contains('escondido')) preencherListaDeAparelhos()
+})
+
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('modal-seletor').classList.contains('escondido')) {
+  if (e.key !== 'Escape') return
+  if (!$('modal-seletor').classList.contains('escondido')) {
     cancelarFonte()
+  } else if (!$('modal-config').classList.contains('escondido')) {
+    fecharConfiguracoes()
   }
 })
 

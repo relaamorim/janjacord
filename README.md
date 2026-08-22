@@ -12,6 +12,8 @@ Aplicativo para Windows estilo Discord: salas de voz com **compartilhamento de t
 
 ### Dicas
 
+- O botão de **engrenagem** (no lobby e na sala) abre as configurações: escolha do **microfone** (útil para não pegar o microfone da webcam), da **saída de som** (fones ou alto-falantes) e da **qualidade da transmissão** (HD 720p ou Full HD 1080p). Tudo fica salvo para as próximas vezes, e a troca de microfone funciona até no meio da chamada.
+- **Clique em uma pessoa na lista** para abrir o controle de volume individual dela — perfeito para abaixar aquele microfone que está estourando.
 - O botão de **balão de conversa** abre o chat de texto. Quando chega mensagem com o chat fechado, aparece um selo vermelho com a contagem. Quem entra na sala recebe as últimas 50 mensagens.
 - Clique no **código da sala** (no topo) para copiá-lo.
 - Na hora de compartilhar, dá para escolher **uma tela inteira ou só uma janela**, e marcar a caixinha para **transmitir também o som do computador**.
@@ -34,8 +36,8 @@ npm run build
 
 Os arquivos aparecem na pasta `dist`:
 
-- `MyDisc Setup 1.2.0.exe` — instalador (instala e cria atalho)
-- `MyDisc 1.2.0.exe` — versão portátil (basta dar dois cliques, sem instalar)
+- `MyDisc Setup <versão>.exe` — instalador (instala e cria atalho)
+- `MyDisc <versão>.exe` — versão portátil (basta dar dois cliques, sem instalar)
 
 ## Atualização automática 🔄
 

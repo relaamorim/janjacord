@@ -14,6 +14,16 @@ contextBridge.exposeInMainWorld('mydisc', {
     ipcRenderer.send('fonte-escolhida', escolha)
   },
 
+  // Avisa a interface quando uma versão nova foi encontrada (download começou)
+  aoAtualizacaoBaixando: (funcao) => {
+    ipcRenderer.on('atualizacao-baixando', (evento, versao) => funcao(versao))
+  },
+
+  // Progresso do download da atualização (0 a 100)
+  aoAtualizacaoProgresso: (funcao) => {
+    ipcRenderer.on('atualizacao-progresso', (evento, porcento) => funcao(porcento))
+  },
+
   // Avisa a interface quando uma atualização terminou de ser baixada
   aoAtualizacaoPronta: (funcao) => {
     ipcRenderer.on('atualizacao-pronta', (evento, versao) => funcao(versao))

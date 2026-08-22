@@ -1744,8 +1744,32 @@ function avisarAtualizacao(versao) {
   $('area-toasts').appendChild(caixa)
 }
 
+// Avisinho fixo com o progresso do download da atualização
+let toastDownload = null
+
+if (window.mydisc.aoAtualizacaoBaixando) {
+  window.mydisc.aoAtualizacaoBaixando((versao) => {
+    if (toastDownload) return
+    toastDownload = document.createElement('div')
+    toastDownload.className = 'toast info'
+    toastDownload.textContent = `Nova versão ${versao} encontrada! Baixando em segundo plano…`
+    $('area-toasts').appendChild(toastDownload)
+  })
+}
+
+if (window.mydisc.aoAtualizacaoProgresso) {
+  window.mydisc.aoAtualizacaoProgresso((porcento) => {
+    if (toastDownload) {
+      toastDownload.textContent = `Baixando a atualização… ${porcento}%`
+    }
+  })
+}
+
 if (window.mydisc.aoAtualizacaoPronta) {
-  window.mydisc.aoAtualizacaoPronta((versao) => avisarAtualizacao(versao))
+  window.mydisc.aoAtualizacaoPronta((versao) => {
+    if (toastDownload) { toastDownload.remove(); toastDownload = null }
+    avisarAtualizacao(versao)
+  })
 }
 
 // Lembra o nome usado da última vez

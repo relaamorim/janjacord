@@ -140,7 +140,7 @@ app.whenReady().then(() => {
   criarBandeja()
 
   // Espera a janela abrir com calma antes de conferir se há versão nova
-  setTimeout(configurarAtualizacoes, 4000)
+  setTimeout(configurarAtualizacoes, 2500)
 })
 
 // Quando o encerramento realmente começar, deixa a janela fechar de verdade
@@ -205,8 +205,22 @@ function configurarAtualizacoes() {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
+  // Achou versão nova: avisa a interface na hora (o download começa junto)
+  autoUpdater.on('update-available', (info) => {
+    if (janela && !janela.isDestroyed()) {
+      janela.webContents.send('atualizacao-baixando', info.version)
+    }
+  })
+
+  // Progresso do download, para a interface mostrar a porcentagem
+  autoUpdater.on('download-progress', (progresso) => {
+    if (janela && !janela.isDestroyed()) {
+      janela.webContents.send('atualizacao-progresso', Math.round(progresso.percent))
+    }
+  })
+
   autoUpdater.on('update-downloaded', (info) => {
-    // Avisa a interface para mostrar o recadinho ao usuário
+    // Avisa a interface para mostrar o recadinho com os botões
     if (janela && !janela.isDestroyed()) {
       janela.webContents.send('atualizacao-pronta', info.version)
     }
@@ -217,12 +231,21 @@ function configurarAtualizacoes() {
     console.log('Atualização adiada:', erro.message)
   })
 
-  autoUpdater.checkForUpdates().catch(() => { /* ignora */ })
+  verificarAgora()
 
-  // Confere de novo a cada 4 horas, para quem deixa o app aberto direto
-  setInterval(() => {
-    autoUpdater.checkForUpdates().catch(() => { /* ignora */ })
-  }, 4 * 60 * 60 * 1000)
+  // Confere de novo a cada 1 hora para quem deixa o app aberto direto,
+  // e também sempre que a janela volta da bandeja
+  setInterval(verificarAgora, 60 * 60 * 1000)
+  if (janela) janela.on('show', verificarAgora)
+}
+
+// Conferência com freio: no máximo uma vez a cada 10 minutos
+let ultimaVerificacao = 0
+function verificarAgora() {
+  const agora = Date.now()
+  if (agora - ultimaVerificacao < 10 * 60 * 1000) return
+  ultimaVerificacao = agora
+  autoUpdater.checkForUpdates().catch(() => { /* ignora */ })
 }
 
 // A versão portátil só consulta qual é a última versão publicada

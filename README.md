@@ -43,7 +43,7 @@ Os arquivos aparecem na pasta `dist`:
 
 ## Atualização automática 🔄
 
-O JanjaCord se atualiza sozinho: quem instalou pelo **JanjaCord Setup** recebe as novas versões em segundo plano (elas são instaladas quando o app é fechado). A versão **portátil** não consegue se substituir, mas avisa quando existe versão nova e oferece a página de download.
+O JanjaCord se atualiza sozinho: quem instalou pelo **JanjaCord Setup** recebe as novas versões em segundo plano. Quando o download termina, aparece um aviso com **"Reiniciar agora"** (instala na hora e reabre sozinho) e **"Depois"** (instala quando o app for fechado de vez). A versão **portátil** não consegue se substituir, mas avisa quando existe versão nova e oferece a página de download.
 
 As versões ficam publicadas em: https://github.com/relaamorim/janjacord/releases
 

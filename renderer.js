@@ -1479,11 +1479,45 @@ document.addEventListener('keydown', (e) => {
 $('layout-dividida').addEventListener('click', () => trocarLayout('dividida'))
 $('layout-foco').addEventListener('click', () => trocarLayout('foco'))
 
-// Recadinho quando uma atualização já foi baixada em segundo plano
-if (window.mydisc.aoAtualizacaoPronta) {
-  window.mydisc.aoAtualizacaoPronta((versao) => {
-    avisar(`Nova versão ${versao} baixada! Ela será instalada quando você fechar o JanjaCord.`, 'info')
+// Recadinho quando uma atualização já foi baixada em segundo plano:
+// fica na tela até o usuário escolher "Reiniciar agora" ou "Depois"
+function avisarAtualizacao(versao) {
+  const caixa = document.createElement('div')
+  caixa.className = 'toast toast-atualizacao'
+
+  const texto = document.createElement('div')
+  texto.textContent = `Nova versão ${versao} pronta! Quer reiniciar agora para atualizar?`
+  caixa.appendChild(texto)
+
+  const botoes = document.createElement('div')
+  botoes.className = 'toast-botoes'
+
+  const agora = document.createElement('button')
+  agora.className = 'botao-toast principal'
+  agora.textContent = 'Reiniciar agora'
+  agora.addEventListener('click', () => {
+    agora.disabled = true
+    agora.textContent = 'Reiniciando…'
+    window.mydisc.reiniciarParaAtualizar()
   })
+
+  const depois = document.createElement('button')
+  depois.className = 'botao-toast'
+  depois.textContent = 'Depois'
+  depois.addEventListener('click', () => {
+    caixa.classList.add('saindo')
+    setTimeout(() => caixa.remove(), 350)
+    avisar('Sem problema! Ela se instala sozinha quando você sair do JanjaCord.', 'info')
+  })
+
+  botoes.appendChild(agora)
+  botoes.appendChild(depois)
+  caixa.appendChild(botoes)
+  $('area-toasts').appendChild(caixa)
+}
+
+if (window.mydisc.aoAtualizacaoPronta) {
+  window.mydisc.aoAtualizacaoPronta((versao) => avisarAtualizacao(versao))
 }
 
 // Lembra o nome usado da última vez

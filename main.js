@@ -141,6 +141,17 @@ app.whenReady().then(() => {
 // Quando o encerramento realmente começar, deixa a janela fechar de verdade
 app.on('before-quit', () => { encerrandoDeVez = true })
 
+// A interface pediu para reiniciar agora e instalar a atualização baixada
+ipcMain.on('reiniciar-para-atualizar', () => {
+  encerrandoDeVez = true
+  try {
+    // Instala em silêncio e reabre o JanjaCord sozinho ao terminar
+    autoUpdater.quitAndInstall(true, true)
+  } catch (erro) {
+    console.log('Não deu para reiniciar agora:', erro.message)
+  }
+})
+
 // A interface respondeu qual tela/janela o usuário escolheu (ou null se cancelou)
 ipcMain.on('fonte-escolhida', (evento, escolha) => {
   if (!pedidoDeCaptura) return

@@ -17,5 +17,10 @@ contextBridge.exposeInMainWorld('mydisc', {
   // Avisa a interface quando uma atualização terminou de ser baixada
   aoAtualizacaoPronta: (funcao) => {
     ipcRenderer.on('atualizacao-pronta', (evento, versao) => funcao(versao))
+  },
+
+  // O usuário clicou em "Reiniciar agora": instala a nova versão já
+  reiniciarParaAtualizar: () => {
+    ipcRenderer.send('reiniciar-para-atualizar')
   }
 })

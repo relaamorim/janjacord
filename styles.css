@@ -1052,8 +1052,44 @@ input[type="text"]::placeholder { color: #5a637a; }
   border-radius: 10px;
   box-shadow: var(--sombra);
   max-width: 340px;
+  pointer-events: auto; /* permite clicar nos botões do aviso */
   animation: toast-entra 0.25s cubic-bezier(0.2, 0.8, 0.25, 1) both;
 }
+
+/* aviso especial de atualização, com botões */
+.toast-atualizacao {
+  border-left-color: var(--menta);
+  font-size: 15px;
+}
+
+.toast-botoes {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.botao-toast {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: var(--painel);
+  color: var(--texto-suave);
+  font-family: var(--fonte-titulo);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s, color 0.15s, transform 0.1s;
+}
+.botao-toast:hover { color: var(--texto); }
+.botao-toast:active { transform: scale(0.96); }
+.botao-toast:disabled { opacity: 0.6; cursor: wait; }
+
+.botao-toast.principal {
+  background: var(--menta);
+  color: #04140d;
+  border: none;
+}
+.botao-toast.principal:hover { filter: brightness(1.1); color: #04140d; }
 .toast.erro { border-left-color: var(--coral); }
 .toast.info { border-left-color: var(--azul); }
 .toast.saindo { animation: toast-sai 0.3s ease both; }

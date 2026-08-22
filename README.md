@@ -4,6 +4,8 @@
 >
 > *"A alternativa open source ao Discord que ninguém pediu."*
 
+![Arte de divulgação do JanjaCord: salas de voz com tela em Full HD, canais de voz e chat](banner.png)
+
 Aplicativo para Windows: salas de voz com **compartilhamento de tela em Full HD (1080p)**, **canais de voz**, **chat de texto** e até **duas transmissões simultâneas** — para até **10 pessoas**, conectadas pela internet, **sem conta, sem cadastro e sem servidor pago**. Gratuito e de código aberto.
 
 ### [⬇️ Baixar a última versão](https://github.com/relaamorim/janjacord/releases/latest)

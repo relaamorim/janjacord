@@ -1,0 +1,57 @@
+{
+  "name": "mydisc",
+  "productName": "MyDisc",
+  "version": "1.2.0",
+  "repository": "https://github.com/relaamorim/mydisc.git",
+  "description": "Salas de voz com compartilhamento de tela em Full HD, estilo Discord",
+  "main": "main.js",
+  "author": "Pedro Amorim",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "publicar": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "peerjs": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.bgamification.mydisc",
+    "productName": "MyDisc",
+    "directories": {
+      "output": "dist"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "relaamorim",
+      "repo": "mydisc",
+      "releaseType": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "MyDisc"
+    }
+  }
+}

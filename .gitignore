@@ -1,0 +1,5 @@
+# Dependências baixadas (qualquer um recria com "npm install")
+node_modules/
+
+# Instaladores gerados (sobem para o GitHub Releases, não para o código)
+dist/

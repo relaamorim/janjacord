@@ -3,16 +3,33 @@
 // "lado do sistema" pode fazer: listar as telas/janelas disponíveis
 // para compartilhamento e entregar a captura escolhida ao aplicativo.
 
-const { app, BrowserWindow, session, desktopCapturer, ipcMain, shell, dialog } = require('electron')
+const { app, BrowserWindow, session, desktopCapturer, ipcMain, shell, dialog, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 const { autoUpdater } = require('electron-updater')
 
 const PAGINA_DE_DOWNLOADS = 'https://github.com/relaamorim/janjacord/releases/latest'
 
+// Garante que só exista UM JanjaCord aberto: se o usuário clicar no atalho
+// com o app escondido na bandeja, a janela existente é trazida de volta.
+const souAUnicaInstancia = app.requestSingleInstanceLock()
+if (!souAUnicaInstancia) app.quit()
+
+app.on('second-instance', () => mostrarJanela())
+
 let janela = null
+let bandeja = null          // ícone na bandeja do sistema (perto do relógio)
+let encerrandoDeVez = false // true quando o usuário pediu para sair mesmo
+let avisoBandejaMostrado = false
 
 // Guarda o "callback" pendente enquanto o usuário escolhe qual tela compartilhar
 let pedidoDeCaptura = null
+
+function mostrarJanela() {
+  if (!janela) return
+  if (janela.isMinimized()) janela.restore()
+  janela.show()
+  janela.focus()
+}
 
 function criarJanela() {
   janela = new BrowserWindow({
@@ -23,6 +40,7 @@ function criarJanela() {
     backgroundColor: '#0b0d14',
     autoHideMenuBar: true,
     title: 'JanjaCord',
+    icon: path.join(__dirname, 'assets', 'icone-256.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -46,6 +64,36 @@ function criarJanela() {
   janela.webContents.on('console-message', (evento, nivel, mensagem) => {
     console.log('[interface]', mensagem)
   })
+
+  // O "X" não fecha o app: ele se recolhe para a bandeja e a chamada continua
+  janela.on('close', (evento) => {
+    if (encerrandoDeVez) return
+    evento.preventDefault()
+    janela.hide()
+    if (!avisoBandejaMostrado && bandeja) {
+      avisoBandejaMostrado = true
+      bandeja.displayBalloon({
+        iconType: 'info',
+        title: 'O JanjaCord continua aberto',
+        content: 'Ele ficou aqui na bandeja, perto do relógio. Clique no ícone para reabrir, ou use "Sair de vez" para fechar.'
+      })
+    }
+  })
+}
+
+// Cria o ícone na bandeja do sistema, com menu de abrir e sair
+function criarBandeja() {
+  const icone = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icone-32.png'))
+  bandeja = new Tray(icone)
+  bandeja.setToolTip('JanjaCord')
+
+  const menu = Menu.buildFromTemplate([
+    { label: 'Abrir o JanjaCord', click: () => mostrarJanela() },
+    { type: 'separator' },
+    { label: 'Sair de vez', click: () => { encerrandoDeVez = true; app.quit() } }
+  ])
+  bandeja.setContextMenu(menu)
+  bandeja.on('click', () => mostrarJanela())
 }
 
 app.whenReady().then(() => {
@@ -82,11 +130,16 @@ app.whenReady().then(() => {
     }
   }, { useSystemPicker: false })
 
+  if (!souAUnicaInstancia) return
   criarJanela()
+  criarBandeja()
 
   // Espera a janela abrir com calma antes de conferir se há versão nova
   setTimeout(configurarAtualizacoes, 4000)
 })
+
+// Quando o encerramento realmente começar, deixa a janela fechar de verdade
+app.on('before-quit', () => { encerrandoDeVez = true })
 
 // A interface respondeu qual tela/janela o usuário escolheu (ou null se cancelou)
 ipcMain.on('fonte-escolhida', (evento, escolha) => {

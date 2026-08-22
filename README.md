@@ -21,6 +21,7 @@ Aplicativo para Windows estilo Discord: salas de voz com **compartilhamento de t
 - **Dois cliques no vídeo** colocam a transmissão em tela cheia.
 - A bolinha do avatar **brilha em verde** quando a pessoa está falando.
 - A sala existe enquanto o **anfitrião** (quem criou) estiver nela. Se ele sair, a sala fecha.
+- Clicar no **X** não fecha o JanjaCord: ele se recolhe para a **bandeja do sistema** (perto do relógio) e a chamada continua. Clique no ícone da bandeja para reabrir, ou clique nele com o botão direito e escolha **"Sair de vez"** para fechar de verdade.
 
 ## Como rodar em modo de desenvolvimento
 

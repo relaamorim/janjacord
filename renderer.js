@@ -40,9 +40,10 @@ const estado = {
   micEhSilencioso: false, // true quando não achamos microfone e criamos um "mudo"
   micMudo: false,
   streamTela: null,
-  chamadasTela: new Map(), // id -> chamada de vídeo que EU iniciei
-  compartilhandoId: null,  // id de quem está transmitindo agora (ou null)
-  compartilhandoNome: '',
+  chamadasTela: new Map(),  // id -> chamada de vídeo que EU iniciei
+  transmissoes: new Map(),  // id -> { nome, stream, propria, tile } (até 2 telas no ar)
+  layout: localStorage.getItem('mydisc-layout') || 'dividida', // 'dividida' ou 'foco'
+  focoId: null,             // no modo foco: qual transmissão está grande
   pararMeuMonitor: null,
   saindo: false,
   chatAberto: false,
@@ -125,7 +126,7 @@ function renderizarParticipantes() {
     nomeCor: estado.nome,
     ehAnfitriao: estado.souAnfitriao,
     mudo: estado.micMudo,
-    transmitindo: estado.compartilhandoId === estado.meuId,
+    transmitindo: estado.transmissoes.has(estado.meuId),
     propria: true
   }]
 
@@ -136,7 +137,7 @@ function renderizarParticipantes() {
       nomeCor: membro.nome,
       ehAnfitriao: !!membro.ehAnfitriao,
       mudo: !!membro.mudo,
-      transmitindo: estado.compartilhandoId === id,
+      transmitindo: estado.transmissoes.has(id),
       propria: false
     })
   }
@@ -374,10 +375,10 @@ function criarPeer(idDesejado) {
 
     if (meta.tipo === 'tela') {
       chamada.answer() // só recebo, não envio nada de volta
-      chamada.on('stream', (stream) => mostrarTelaRemota(chamada.peer, meta.nome, stream))
-      chamada.on('close', () => {
-        if (estado.compartilhandoId === chamada.peer) limparPalco()
+      chamada.on('stream', (stream) => {
+        adicionarTransmissao(chamada.peer, meta.nome || 'Alguém', stream, false)
       })
+      chamada.on('close', () => removerTransmissao(chamada.peer))
     }
   })
 
@@ -468,8 +469,6 @@ async function criarSala(tentativa = 0) {
         membros: [...estado.membros.entries()].map(([id, m]) => ({
           id, nome: m.nome, mudo: !!m.mudo
         })),
-        compartilhandoId: estado.compartilhandoId,
-        compartilhandoNome: estado.compartilhandoNome,
         historico: estado.historicoChat.slice(-50)
       })
 
@@ -507,13 +506,8 @@ function tratarMensagemComoAnfitriao(conexao, mensagem) {
   }
 
   if (mensagem.tipo === 'compartilhando') {
-    if (mensagem.ativo) {
-      estado.compartilhandoId = id
-      estado.compartilhandoNome = membro.nome
-    } else if (estado.compartilhandoId === id) {
-      estado.compartilhandoId = null
-      estado.compartilhandoNome = ''
-    }
+    // O quadro em si aparece quando o vídeo chega; aqui só repassamos o aviso
+    if (!mensagem.ativo) removerTransmissao(id)
     renderizarParticipantes()
     enviarParaTodos({
       tipo: 'compartilhando', id, nome: membro.nome, ativo: !!mensagem.ativo
@@ -558,7 +552,7 @@ function removerMembro(id) {
 
   estado.membros.delete(id)
 
-  if (estado.compartilhandoId === id) limparPalco()
+  removerTransmissao(id)
 
   if (estado.souAnfitriao) {
     enviarParaTodos({ tipo: 'saiu', id })
@@ -774,11 +768,6 @@ function tratarMensagemComoConvidado(mensagem, alarme) {
       estado.membros.set(m.id, { nome: m.nome, ehAnfitriao: false, mudo: !!m.mudo })
     }
 
-    if (mensagem.compartilhandoId) {
-      estado.compartilhandoId = mensagem.compartilhandoId
-      estado.compartilhandoNome = mensagem.compartilhandoNome
-    }
-
     entrarNaTelaDaSala()
     atualizarStatus('conectado', 'Conectado')
     ligarMeuDetectorDeFala()
@@ -823,12 +812,8 @@ function tratarMensagemComoConvidado(mensagem, alarme) {
   }
 
   if (mensagem.tipo === 'compartilhando') {
-    if (mensagem.ativo) {
-      estado.compartilhandoId = mensagem.id
-      estado.compartilhandoNome = mensagem.nome
-    } else if (estado.compartilhandoId === mensagem.id) {
-      limparPalco()
-    }
+    // O quadro em si aparece quando o vídeo chega; aqui só tiramos quem parou
+    if (!mensagem.ativo) removerTransmissao(mensagem.id)
     renderizarParticipantes()
     return
   }
@@ -884,6 +869,8 @@ function alternarMicrofone() {
 // COMPARTILHAMENTO DE TELA (Full HD)
 // ============================================================
 
+const LIMITE_TRANSMISSOES = 2 // quantas telas podem estar no ar ao mesmo tempo
+
 async function alternarCompartilhamento() {
   // Já estou transmitindo? Então parar.
   if (estado.streamTela) {
@@ -891,9 +878,9 @@ async function alternarCompartilhamento() {
     return
   }
 
-  // Outra pessoa está transmitindo?
-  if (estado.compartilhandoId && estado.compartilhandoId !== estado.meuId) {
-    avisar(`${estado.compartilhandoNome} já está compartilhando. Peça para parar primeiro.`, 'info')
+  // O palco já está cheio?
+  if (estado.transmissoes.size >= LIMITE_TRANSMISSOES) {
+    avisar('Já existem duas telas sendo transmitidas. Peça para alguém parar primeiro.', 'info')
     return
   }
 
@@ -921,14 +908,12 @@ async function alternarCompartilhamento() {
     trilha.onended = () => pararMinhaTela()
 
     // Mostra minha própria tela no palco (sem som, para não dar eco)
-    mostrarTelaLocal(stream)
+    adicionarTransmissao(estado.meuId, estado.nome, stream, true)
 
     // Envia a tela para todo mundo que está na sala
     for (const [id] of estado.membros) ligarTelaPara(id)
 
     // Avisa a sala
-    estado.compartilhandoId = estado.meuId
-    estado.compartilhandoNome = estado.nome
     if (estado.souAnfitriao) {
       enviarParaTodos({ tipo: 'compartilhando', id: estado.meuId, nome: estado.nome, ativo: true })
     } else if (estado.conexaoAnfitriao && estado.conexaoAnfitriao.open) {
@@ -1005,7 +990,7 @@ function pararMinhaTela() {
   }
   estado.chamadasTela.clear()
 
-  limparPalco()
+  removerTransmissao(estado.meuId)
 
   if (estado.souAnfitriao) {
     enviarParaTodos({ tipo: 'compartilhando', id: estado.meuId, nome: estado.nome, ativo: false })
@@ -1018,39 +1003,115 @@ function pararMinhaTela() {
   renderizarParticipantes()
 }
 
-function mostrarTelaLocal(stream) {
-  estado.compartilhandoId = estado.meuId
-  $('palco-vazio').classList.add('escondido')
-  $('palco-video').classList.remove('escondido')
-  const video = $('video-tela')
-  video.srcObject = stream
-  video.muted = true // nunca tocar meu próprio som de volta
-  $('texto-compartilhando').textContent = 'Você está compartilhando'
-}
+// ============================================================
+// PALCO COM ATÉ DUAS TRANSMISSÕES
+// Cada transmissão vira um "quadro" (vídeo + etiqueta com o nome).
+// Com duas no ar, dá para escolher o layout: Dividida ou Foco.
+// ============================================================
 
-function mostrarTelaRemota(id, nome, stream) {
-  estado.compartilhandoId = id
-  estado.compartilhandoNome = nome || 'Alguém'
-  $('palco-vazio').classList.add('escondido')
-  $('palco-video').classList.remove('escondido')
-  const video = $('video-tela')
+function adicionarTransmissao(id, nome, stream, propria) {
+  // Se essa pessoa já tinha um quadro (ex.: reconexão), limpa o antigo
+  removerTransmissao(id, true)
+
+  const quadro = document.createElement('div')
+  quadro.className = 'tile'
+
+  const video = document.createElement('video')
+  video.autoplay = true
+  video.playsInline = true
   video.srcObject = stream
-  video.muted = false // se vier som do sistema, queremos ouvir
-  if (prefSaida() && video.setSinkId) {
+  video.muted = !!propria // nunca tocar meu próprio som de volta
+  if (!propria && prefSaida() && video.setSinkId) {
     video.setSinkId(prefSaida()).catch(() => { /* saída não existe mais: usa a padrão */ })
   }
-  $('texto-compartilhando').textContent = `Tela de ${estado.compartilhandoNome}`
+  video.title = 'Clique duas vezes para tela cheia'
+  video.addEventListener('dblclick', () => {
+    if (document.fullscreenElement) document.exitFullscreen()
+    else video.requestFullscreen().catch(() => { /* ignora */ })
+  })
+
+  const etiqueta = document.createElement('span')
+  etiqueta.className = 'tile-nome'
+  etiqueta.textContent = propria ? 'Você' : nome
+
+  quadro.appendChild(video)
+  quadro.appendChild(etiqueta)
+
+  // No modo Foco, clicar na tela pequena traz ela para a frente
+  quadro.addEventListener('click', () => {
+    if (estado.layout === 'foco' && quadro.classList.contains('miniatura')) {
+      estado.focoId = id
+      renderizarPalco()
+    }
+  })
+
+  estado.transmissoes.set(id, { nome, stream, propria, tile: quadro })
+  if (estado.transmissoes.size === 1) estado.focoId = id
+  renderizarPalco()
   renderizarParticipantes()
 }
 
-function limparPalco() {
-  estado.compartilhandoId = null
-  estado.compartilhandoNome = ''
-  const video = $('video-tela')
-  video.srcObject = null
-  $('palco-video').classList.add('escondido')
-  $('palco-vazio').classList.remove('escondido')
-  renderizarParticipantes()
+function removerTransmissao(id, silencioso = false) {
+  const transmissao = estado.transmissoes.get(id)
+  if (!transmissao) return
+  transmissao.tile.remove()
+  estado.transmissoes.delete(id)
+
+  // Se quem saiu era o destaque do modo Foco, promove a que sobrou
+  if (estado.focoId === id) {
+    const primeira = estado.transmissoes.keys().next()
+    estado.focoId = primeira.done ? null : primeira.value
+  }
+
+  if (!silencioso) {
+    renderizarPalco()
+    renderizarParticipantes()
+  }
+}
+
+function renderizarPalco() {
+  const quantas = estado.transmissoes.size
+  $('palco-vazio').classList.toggle('escondido', quantas > 0)
+  $('palco-video').classList.toggle('escondido', quantas === 0)
+  $('botoes-layout').classList.toggle('escondido', quantas < 2)
+
+  const area = $('area-tiles')
+  area.className = 'area-tiles ' + (quantas < 2 ? 'uma' : estado.layout)
+
+  for (const [id, transmissao] of estado.transmissoes) {
+    transmissao.tile.classList.remove('principal', 'miniatura')
+    if (quantas >= 2 && estado.layout === 'foco') {
+      transmissao.tile.classList.add(id === estado.focoId ? 'principal' : 'miniatura')
+    }
+    area.appendChild(transmissao.tile)
+  }
+
+  atualizarFaixa()
+  $('layout-dividida').classList.toggle('ativa', estado.layout === 'dividida')
+  $('layout-foco').classList.toggle('ativa', estado.layout === 'foco')
+}
+
+// Texto da faixa do topo: quem está transmitindo agora
+function atualizarFaixa() {
+  const nomes = []
+  let aMinhaEstaNoAr = false
+  for (const [, transmissao] of estado.transmissoes) {
+    if (transmissao.propria) aMinhaEstaNoAr = true
+    else nomes.push(transmissao.nome)
+  }
+
+  let texto = ''
+  if (aMinhaEstaNoAr && nomes.length) texto = `Você e ${nomes[0]} estão compartilhando`
+  else if (aMinhaEstaNoAr) texto = 'Você está compartilhando'
+  else if (nomes.length > 1) texto = `Telas de ${nomes[0]} e ${nomes[1]}`
+  else if (nomes.length === 1) texto = `Tela de ${nomes[0]}`
+  $('texto-compartilhando').textContent = texto
+}
+
+function trocarLayout(novo) {
+  estado.layout = novo
+  localStorage.setItem('mydisc-layout', novo)
+  renderizarPalco()
 }
 
 // ============================================================
@@ -1242,8 +1303,12 @@ function aplicarSaidaDeSom() {
       membro.audioEl.setSinkId(id || '').catch(() => { /* ignora */ })
     }
   }
-  const video = $('video-tela')
-  if (video.setSinkId) video.setSinkId(id || '').catch(() => { /* ignora */ })
+  for (const [, transmissao] of estado.transmissoes) {
+    const video = transmissao.tile.querySelector('video')
+    if (video && !transmissao.propria && video.setSinkId) {
+      video.setSinkId(id || '').catch(() => { /* ignora */ })
+    }
+  }
 }
 
 // Aplica a nova resolução em uma transmissão que já está no ar
@@ -1298,10 +1363,12 @@ function sairDaSala(motivo, silencioso = false) {
 
   estado.conexaoAnfitriao = null
   estado.meuId = null
-  estado.compartilhandoId = null
-  estado.compartilhandoNome = ''
+  estado.focoId = null
   estado.micMudo = false
   estado.souAnfitriao = false
+
+  // Tira todos os quadros de transmissão do palco
+  for (const id of [...estado.transmissoes.keys()]) removerTransmissao(id, true)
 
   // Volta o visual ao estado inicial
   $('botao-mic').classList.remove('mudo')
@@ -1323,7 +1390,7 @@ function sairDaSala(motivo, silencioso = false) {
   $('botao-chat').classList.remove('ativo')
   atualizarSeloChat()
 
-  limparPalco()
+  renderizarPalco()
 
   trocarParaTela('tela-lobby')
   if (motivo && !silencioso) avisar(motivo, 'info')
@@ -1408,12 +1475,9 @@ document.addEventListener('keydown', (e) => {
   }
 })
 
-// Tela cheia com dois cliques no vídeo
-$('video-tela').addEventListener('dblclick', () => {
-  const video = $('video-tela')
-  if (document.fullscreenElement) document.exitFullscreen()
-  else video.requestFullscreen().catch(() => { /* ignora */ })
-})
+// Botões de troca de layout do palco (aparecem com duas transmissões)
+$('layout-dividida').addEventListener('click', () => trocarLayout('dividida'))
+$('layout-foco').addEventListener('click', () => trocarLayout('foco'))
 
 // Recadinho quando uma atualização já foi baixada em segundo plano
 if (window.mydisc.aoAtualizacaoPronta) {

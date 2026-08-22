@@ -99,13 +99,26 @@
           <p class="palco-vazio-texto">Clique em <strong>Compartilhar tela</strong> ali embaixo para transmitir em Full&nbsp;HD.</p>
         </div>
 
-        <!-- Aparece durante um compartilhamento -->
+        <!-- Aparece durante um compartilhamento (até duas telas ao mesmo tempo) -->
         <div id="palco-video" class="palco-video escondido">
           <div id="faixa-compartilhando" class="faixa-compartilhando">
             <span class="ponto-vivo"></span>
             <span id="texto-compartilhando">Tela de …</span>
           </div>
-          <video id="video-tela" autoplay playsinline muted title="Clique duas vezes para tela cheia"></video>
+
+          <!-- Escolha de layout, aparece quando há duas transmissões -->
+          <div id="botoes-layout" class="botoes-layout escondido">
+            <button id="layout-dividida" class="botao-layout ativa" title="Duas telas lado a lado">
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 4h8.2v16H3V4zm9.8 0H21v16h-8.2V4z"/></svg>
+              Dividida
+            </button>
+            <button id="layout-foco" class="botao-layout" title="Uma tela grande e outra pequena no canto">
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 4h18v16H3V4zm2 2v12h14V6H5zm7 6h6v5h-6v-5z"/></svg>
+              Foco
+            </button>
+          </div>
+
+          <div id="area-tiles" class="area-tiles uma"></div>
         </div>
       </main>
 

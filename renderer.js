@@ -1,5 +1,5 @@
 // ============================================================
-// MyDisc — lógica da interface
+// JanjaCord — lógica da interface
 //
 // Como funciona, em resumo:
 // • Quem CRIA a sala vira o "anfitrião": recebe um código e fica
@@ -17,7 +17,9 @@
 
 const $ = (id) => document.getElementById(id)
 
-const PREFIXO_SALA = 'mydisc-v1-' // prefixo do endereço do anfitrião na rede
+// Prefixo do endereço do anfitrião na rede. Continua "mydisc" de propósito:
+// mudar quebraria as salas entre quem já tem o app e quem acabou de atualizar.
+const PREFIXO_SALA = 'mydisc-v1-'
 const LIMITE_PESSOAS = 10         // máximo de pessoas na sala (contando o anfitrião)
 
 // Orçamento de internet para a tela compartilhada: quem transmite envia uma
@@ -1416,7 +1418,7 @@ $('video-tela').addEventListener('dblclick', () => {
 // Recadinho quando uma atualização já foi baixada em segundo plano
 if (window.mydisc.aoAtualizacaoPronta) {
   window.mydisc.aoAtualizacaoPronta((versao) => {
-    avisar(`Nova versão ${versao} baixada! Ela será instalada quando você fechar o MyDisc.`, 'info')
+    avisar(`Nova versão ${versao} baixada! Ela será instalada quando você fechar o JanjaCord.`, 'info')
   })
 }
 

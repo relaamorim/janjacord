@@ -1,8 +1,8 @@
 {
-  "name": "mydisc",
-  "productName": "MyDisc",
-  "version": "1.3.0",
-  "repository": "https://github.com/relaamorim/mydisc.git",
+  "name": "janjacord",
+  "productName": "JanjaCord",
+  "version": "1.4.0",
+  "repository": "https://github.com/relaamorim/janjacord.git",
   "description": "Salas de voz com compartilhamento de tela em Full HD, estilo Discord",
   "main": "main.js",
   "author": "Pedro Amorim",
@@ -22,14 +22,14 @@
   },
   "build": {
     "appId": "com.bgamification.mydisc",
-    "productName": "MyDisc",
+    "productName": "JanjaCord",
     "directories": {
       "output": "dist"
     },
     "publish": {
       "provider": "github",
       "owner": "relaamorim",
-      "repo": "mydisc",
+      "repo": "janjacord",
       "releaseType": "release"
     },
     "win": {
@@ -51,7 +51,7 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "shortcutName": "MyDisc"
+      "shortcutName": "JanjaCord"
     }
   }
 }

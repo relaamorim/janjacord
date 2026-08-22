@@ -1,4 +1,4 @@
-// MyDisc — processo principal do Electron
+// JanjaCord — processo principal do Electron
 // Este arquivo cria a janela do aplicativo e cuida da parte que só o
 // "lado do sistema" pode fazer: listar as telas/janelas disponíveis
 // para compartilhamento e entregar a captura escolhida ao aplicativo.
@@ -7,7 +7,7 @@ const { app, BrowserWindow, session, desktopCapturer, ipcMain, shell, dialog } =
 const path = require('path')
 const { autoUpdater } = require('electron-updater')
 
-const PAGINA_DE_DOWNLOADS = 'https://github.com/relaamorim/mydisc/releases/latest'
+const PAGINA_DE_DOWNLOADS = 'https://github.com/relaamorim/janjacord/releases/latest'
 
 let janela = null
 
@@ -22,7 +22,7 @@ function criarJanela() {
     minHeight: 620,
     backgroundColor: '#0b0d14',
     autoHideMenuBar: true,
-    title: 'MyDisc',
+    title: 'JanjaCord',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -117,7 +117,7 @@ ipcMain.on('fonte-escolhida', (evento, escolha) => {
 
 // ============================================================
 // ATUALIZAÇÃO AUTOMÁTICA
-// Quem instalou pelo "MyDisc Setup" recebe as novas versões sozinho:
+// Quem instalou pelo "JanjaCord Setup" recebe as novas versões sozinho:
 // o app baixa em segundo plano e instala quando for fechado.
 // A versão portátil não consegue se substituir, então ela apenas
 // avisa quando existe versão nova e oferece a página de download.
@@ -159,8 +159,8 @@ function configurarAtualizacoes() {
 // A versão portátil só consulta qual é a última versão publicada
 async function verificarVersaoPortatil() {
   try {
-    const resposta = await fetch('https://api.github.com/repos/relaamorim/mydisc/releases/latest', {
-      headers: { 'User-Agent': 'MyDisc' }
+    const resposta = await fetch('https://api.github.com/repos/relaamorim/janjacord/releases/latest', {
+      headers: { 'User-Agent': 'JanjaCord' }
     })
     if (!resposta.ok) return
     const dados = await resposta.json()
@@ -170,7 +170,7 @@ async function verificarVersaoPortatil() {
       const escolha = await dialog.showMessageBox(janela, {
         type: 'info',
         title: 'Atualização disponível',
-        message: `Saiu o MyDisc ${novaVersao}!`,
+        message: `Saiu o JanjaCord ${novaVersao}!`,
         detail: 'Você usa a versão portátil, que não se atualiza sozinha. Quer abrir a página para baixar a nova versão?',
         buttons: ['Baixar agora', 'Deixar para depois'],
         defaultId: 0,

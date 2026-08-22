@@ -1,4 +1,4 @@
-// MyDisc — ponte segura entre a interface e o processo principal
+// JanjaCord — ponte segura entre a interface e o processo principal
 // Expõe apenas as duas funções que a interface precisa, nada mais.
 
 const { contextBridge, ipcRenderer } = require('electron')

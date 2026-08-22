@@ -1,13 +1,13 @@
-# MyDisc 🟢
+# JanjaCord 🟢
 
 Aplicativo para Windows estilo Discord: salas de voz com **compartilhamento de tela em Full HD (1080p)** e **chat de texto**, para até **10 pessoas**, conectadas pela internet — sem precisar de conta nem de servidor pago.
 
 ## Como usar
 
-1. Abra o MyDisc e escreva seu nome.
+1. Abra o JanjaCord e escreva seu nome.
 2. Clique em **Criar uma sala** — você recebe um código de 6 letras (ex.: `KM3T7X`).
 3. Mande o código para as pessoas (WhatsApp, e-mail, como preferir).
-4. Elas abrem o MyDisc, digitam o código e clicam em **Entrar**.
+4. Elas abrem o JanjaCord, digitam o código e clicam em **Entrar**.
 5. Pronto: todo mundo se ouve. Quem quiser mostra a tela clicando em **Compartilhar tela**.
 
 ### Dicas
@@ -36,14 +36,16 @@ npm run build
 
 Os arquivos aparecem na pasta `dist`:
 
-- `MyDisc Setup <versão>.exe` — instalador (instala e cria atalho)
-- `MyDisc <versão>.exe` — versão portátil (basta dar dois cliques, sem instalar)
+- `JanjaCord Setup <versão>.exe` — instalador (instala e cria atalho)
+- `JanjaCord <versão>.exe` — versão portátil (basta dar dois cliques, sem instalar)
 
 ## Atualização automática 🔄
 
-O MyDisc se atualiza sozinho: quem instalou pelo **MyDisc Setup** recebe as novas versões em segundo plano (elas são instaladas quando o app é fechado). A versão **portátil** não consegue se substituir, mas avisa quando existe versão nova e oferece a página de download.
+O JanjaCord se atualiza sozinho: quem instalou pelo **JanjaCord Setup** recebe as novas versões em segundo plano (elas são instaladas quando o app é fechado). A versão **portátil** não consegue se substituir, mas avisa quando existe versão nova e oferece a página de download.
 
-As versões ficam publicadas em: https://github.com/relaamorim/mydisc/releases
+As versões ficam publicadas em: https://github.com/relaamorim/janjacord/releases
+
+> **Curiosidade técnica**: o app já se chamou MyDisc. Alguns identificadores internos (endereço das salas, código de instalação) continuam com o nome antigo de propósito — é isso que garante que quem instalou como MyDisc receba a atualização de nome automaticamente e continue entrando nas mesmas salas.
 
 ### Como lançar uma nova versão (para o dono do projeto)
 

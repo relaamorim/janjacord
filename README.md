@@ -39,15 +39,18 @@ Toda sala nasce com o canal **Geral**, e o **anfitrião** pode criar mais canais
 
 ### Dicas
 
-- O botão de **engrenagem** (no lobby e na sala) abre as configurações: escolha do **microfone** (útil para não pegar o microfone da webcam), da **saída de som** (fones ou alto-falantes) e da **qualidade da transmissão** (HD 720p ou Full HD 1080p). Tudo fica salvo para as próximas vezes, e a troca de microfone funciona até no meio da chamada.
+- No **canto inferior esquerdo** fica o seu painel: botões de **mutar o microfone**, **mutar o headset** (não ouvir ninguém — e o microfone também fica mudo, como no Discord) e a **engrenagem** das configurações: **microfone** (útil para não pegar o da webcam), **saída de som** (fones ou alto-falantes), **qualidade da transmissão** (HD 720p ou Full HD 1080p) e **som da transmissão** (veja abaixo). Tudo fica salvo, e a troca de microfone funciona até no meio da chamada.
+- **Som da transmissão só do jogo**: por padrão a opção "transmitir o som do computador" manda **tudo** que toca no PC (inclusive notificações e as vozes da sala). Para mandar **só o som do jogo**, escolha nas configurações **"Um dispositivo específico"**: instale um cabo de áudio virtual gratuito (ex.: **VB-Cable**), em *Configurações do Windows → Sistema → Som → Volume e preferências de dispositivo* mande a saída do jogo para o cabo, e selecione o cabo no JanjaCord. É o mesmo truque que streamers usam no OBS.
+- Quem assiste tem um **controle de volume da transmissão** (passe o mouse sobre o vídeo): abaixa o som do que está sendo transmitido sem mexer nas vozes.
 - **Clique em uma pessoa na lista** para abrir o controle de volume individual dela — perfeito para abaixar aquele microfone que está estourando.
 - Com **duas transmissões ao mesmo tempo**, aparecem os botões de layout no canto do palco: **Dividida** (metade da tela para cada) ou **Foco** (uma grande e outra pequena no canto — clique na pequena para trocar qual fica em destaque).
-- O botão de **balão de conversa** abre o chat de texto. Quando chega mensagem com o chat fechado, aparece um selo vermelho com a contagem. Quem entra na sala recebe as últimas 50 mensagens.
+- O ícone de **balão de conversa ao lado do canal de voz** em que você está abre o chat de texto. Quando chega mensagem com o chat fechado, aparece um selo vermelho com a contagem. Quem entra na sala recebe as últimas 50 mensagens.
 - Clique no **código da sala** (no topo) para copiá-lo.
-- Na hora de compartilhar, dá para escolher **uma tela inteira ou só uma janela**, e marcar a caixinha para **transmitir também o som do computador**.
+- Na hora de compartilhar, dá para escolher **uma tela inteira ou só uma janela**, e marcar a caixinha para **transmitir também o som**. Os botões de compartilhar/parar e sair ficam no **canto inferior direito** do palco e, durante uma transmissão, só aparecem quando o mouse se mexe — para a tela ficar limpa.
 - **Dois cliques no vídeo** colocam a transmissão em tela cheia.
 - A bolinha do avatar **brilha em verde** quando a pessoa está falando.
 - A sala existe enquanto o **anfitrião** (quem criou) estiver nela. Se ele sair, a sala fecha.
+- **Quedas de conexão**: se a internet oscilar, o JanjaCord refaz sozinho as ligações de voz que caíram e reconecta com a sala (você vê "Reconectando…" no topo). Só depois de várias tentativas sem sucesso ele avisa para entrar de novo.
 - Clicar no **X** não fecha o JanjaCord: ele se recolhe para a **bandeja do sistema** (perto do relógio) e a chamada continua. Clique no ícone da bandeja para reabrir, ou clique nele com o botão direito e escolha **"Sair de vez"** para fechar de verdade.
 
 ## Como rodar em modo de desenvolvimento

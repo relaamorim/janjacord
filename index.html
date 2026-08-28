@@ -15,7 +15,7 @@
   <!-- ==================== TELA DE ENTRADA (LOBBY) ==================== -->
   <section id="tela-lobby" class="tela ativa">
     <button id="botao-config-lobby" class="botao-engrenagem" title="Configurações de som e transmissão">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-1.7-7h3.4l.5 2.4c.6.2 1.1.5 1.6.9l2.3-.8 1.7 3-1.8 1.6a6.9 6.9 0 0 1 0 1.8l1.8 1.6-1.7 3-2.3-.8c-.5.4-1 .7-1.6.9l-.5 2.4h-3.4l-.5-2.4a6.5 6.5 0 0 1-1.6-.9l-2.3.8-1.7-3 1.8-1.6a6.9 6.9 0 0 1 0-1.8L4.2 8.5l1.7-3 2.3.8c.5-.4 1-.7 1.6-.9L10.3 3z"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
     </button>
     <div class="fundo-decorativo" aria-hidden="true">
       <div class="mancha mancha-menta"></div>
@@ -92,28 +92,44 @@
           <input id="campo-novo-canal" type="text" maxlength="20" placeholder="Nome do canal (Enter cria)" autocomplete="off" spellcheck="false">
         </div>
         <ul id="lista-participantes" class="lista-participantes"></ul>
-        <div class="lateral-dica">
-          Compartilhe o código da sala para<br>chamar até <strong>10 pessoas</strong>.
+
+        <!-- Painel do usuário (canto inferior esquerdo): mic, headset e configurações -->
+        <div class="painel-usuario">
+          <div class="usuario-info">
+            <div id="avatar-eu" class="avatar avatar-pequeno">?</div>
+            <div class="usuario-textos">
+              <span id="nome-eu" class="usuario-nome">Você</span>
+              <span id="estado-eu" class="usuario-estado">Conectado</span>
+            </div>
+          </div>
+          <div class="usuario-botoes">
+            <button id="botao-mic" class="botao-usuario" title="Silenciar / ativar microfone">
+              <svg id="icone-mic-ligado" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+              <svg id="icone-mic-mudo" class="escondido" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M3.3 2.3 21.7 20.7l-1.4 1.4-4.2-4.2A6.96 6.96 0 0 1 13 18.9V21h-2v-2.08A7 7 0 0 1 5 11h2a5 5 0 0 0 7.6 4.27l-1.5-1.5A3 3 0 0 1 9 11v-.76L1.9 3.7l1.4-1.4zM15 11c0 .17-.01.33-.04.49L9.5 6.03V6a3 3 0 1 1 6 0v5h-.5zm4 0h-2c0 .61-.11 1.2-.31 1.74l1.51 1.51c.51-.98.8-2.08.8-3.25z"/></svg>
+            </button>
+            <button id="botao-headset" class="botao-usuario" title="Silenciar / ativar o som dos outros (headset)">
+              <svg id="icone-headset-ligado" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 1a9 9 0 0 0-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 0 0-9-9z"/></svg>
+              <svg id="icone-headset-mudo" class="escondido" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 1a9 9 0 0 0-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 0 0-9-9z"/><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M3 3l18 18"/></svg>
+            </button>
+            <button id="botao-config" class="botao-usuario" title="Configurações">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            </button>
+          </div>
         </div>
       </aside>
 
-      <main class="palco">
+      <main class="palco sem-transmissao">
         <!-- Aparece quando ninguém está compartilhando -->
         <div id="palco-vazio" class="palco-vazio">
           <svg viewBox="0 0 24 24" width="72" height="72" aria-hidden="true">
             <path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6v2h3a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h3v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v10h16V6H4z"/>
           </svg>
           <p class="palco-vazio-titulo">Ninguém está compartilhando</p>
-          <p class="palco-vazio-texto">Clique em <strong>Compartilhar tela</strong> ali embaixo para transmitir em Full&nbsp;HD.</p>
+          <p class="palco-vazio-texto">Clique em <strong>Compartilhar tela</strong>, no canto inferior direito, para transmitir em Full&nbsp;HD.</p>
         </div>
 
         <!-- Aparece durante um compartilhamento (até duas telas ao mesmo tempo) -->
         <div id="palco-video" class="palco-video escondido">
-          <div id="faixa-compartilhando" class="faixa-compartilhando">
-            <span class="ponto-vivo"></span>
-            <span id="texto-compartilhando">Tela de …</span>
-          </div>
-
           <!-- Escolha de layout, aparece quando há duas transmissões -->
           <div id="botoes-layout" class="botoes-layout escondido">
             <button id="layout-dividida" class="botao-layout ativa" title="Duas telas lado a lado">
@@ -127,6 +143,18 @@
           </div>
 
           <div id="area-tiles" class="area-tiles uma"></div>
+        </div>
+
+        <!-- Ações do palco (canto inferior direito). Durante uma transmissão,
+             só aparecem quando o mouse se mexe sobre o palco -->
+        <div id="acoes-palco" class="acoes-palco">
+          <button id="botao-tela" class="controle controle-tela" title="Compartilhar sua tela">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6v2h3a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h3v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v10h16V6H4zm7 1.5 4 3.5-4 3.5v-7z"/></svg>
+            <span id="texto-botao-tela">Compartilhar tela</span>
+          </button>
+          <button id="botao-sair" class="controle controle-sair" title="Sair da sala">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M10 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-3h2v3h8V5h-8v3H8V5a2 2 0 0 1 2-2zm1.5 5.5L8 12l3.5 3.5 1.4-1.4L11.83 13H16v-2h-4.17l1.07-1.1-1.4-1.4z"/></svg>
+          </button>
         </div>
       </main>
 
@@ -143,31 +171,6 @@
       </aside>
     </div>
 
-    <!-- Barra de controles flutuante -->
-    <div class="barra-controles">
-      <button id="botao-mic" class="controle" title="Silenciar / ativar microfone">
-        <svg id="icone-mic-ligado" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
-        <svg id="icone-mic-mudo" class="escondido" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M3.3 2.3 21.7 20.7l-1.4 1.4-4.2-4.2A6.96 6.96 0 0 1 13 18.9V21h-2v-2.08A7 7 0 0 1 5 11h2a5 5 0 0 0 7.6 4.27l-1.5-1.5A3 3 0 0 1 9 11v-.76L1.9 3.7l1.4-1.4zM15 11c0 .17-.01.33-.04.49L9.5 6.03V6a3 3 0 1 1 6 0v5h-.5zm4 0h-2c0 .61-.11 1.2-.31 1.74l1.51 1.51c.51-.98.8-2.08.8-3.25z"/></svg>
-      </button>
-
-      <button id="botao-tela" class="controle controle-tela" title="Compartilhar sua tela em Full HD">
-        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6v2h3a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h3v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v10h16V6H4zm7 1.5 4 3.5-4 3.5v-7z"/></svg>
-        <span id="texto-botao-tela">Compartilhar tela</span>
-      </button>
-
-      <button id="botao-config" class="controle" title="Configurações de som e transmissão">
-        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-1.7-7h3.4l.5 2.4c.6.2 1.1.5 1.6.9l2.3-.8 1.7 3-1.8 1.6a6.9 6.9 0 0 1 0 1.8l1.8 1.6-1.7 3-2.3-.8c-.5.4-1 .7-1.6.9l-.5 2.4h-3.4l-.5-2.4a6.5 6.5 0 0 1-1.6-.9l-2.3.8-1.7-3 1.8-1.6a6.9 6.9 0 0 1 0-1.8L4.2 8.5l1.7-3 2.3.8c.5-.4 1-.7 1.6-.9L10.3 3z"/></svg>
-      </button>
-
-      <button id="botao-chat" class="controle" title="Abrir / fechar o chat">
-        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8.4L4 21.6A1 1 0 0 1 2.4 20.8V5A2 2 0 0 1 4 3zm0 2v13.2L7.6 16H20V5H4zm3 3h10v2H7V8zm0 4h7v2H7v-2z"/></svg>
-        <span id="selo-chat" class="selo escondido">0</span>
-      </button>
-
-      <button id="botao-sair" class="controle controle-sair" title="Sair da sala">
-        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M10 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-3h2v3h8V5h-8v3H8V5a2 2 0 0 1 2-2zm1.5 5.5L8 12l3.5 3.5 1.4-1.4L11.83 13H16v-2h-4.17l1.07-1.1-1.4-1.4z"/></svg>
-      </button>
-    </div>
   </section>
 
   <!-- ==================== SELETOR DE TELA/JANELA ==================== -->
@@ -185,7 +188,7 @@
       <label class="opcao-som">
         <input id="opcao-com-som" type="checkbox">
         <span class="caixinha" aria-hidden="true"></span>
-        Compartilhar também o som do computador
+        <span id="texto-opcao-som">Compartilhar também o som do computador</span>
       </label>
 
       <div class="modal-botoes">
@@ -224,6 +227,24 @@
             <small>nitidez máxima</small>
           </label>
         </div>
+      </div>
+
+      <div class="campo">
+        <span class="campo-rotulo">Som da transmissão de tela</span>
+        <div class="opcoes-resolucao">
+          <label class="opcao-resolucao">
+            <input type="radio" name="som-tela" value="sistema">
+            <span>Todo o computador</span>
+            <small>inclui notificações e as vozes da sala</small>
+          </label>
+          <label class="opcao-resolucao">
+            <input type="radio" name="som-tela" value="dispositivo">
+            <span>Um dispositivo específico</span>
+            <small>só o que você mandar para ele</small>
+          </label>
+        </div>
+        <select id="seletor-som-tela" class="seletor escondido" style="margin-top: 10px;"></select>
+        <p id="dica-som-tela" class="dica-config escondido">Para transmitir <strong>só o som do jogo</strong>: instale um cabo de áudio virtual gratuito (ex.: <strong>VB-Cable</strong>); depois, em <em>Configurações do Windows → Sistema → Som → Volume e preferências de dispositivo</em>, mande a saída do jogo para o cabo e escolha o cabo aqui em cima.</p>
       </div>
 
       <div class="modal-botoes">

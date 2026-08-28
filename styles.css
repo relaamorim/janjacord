@@ -488,14 +488,80 @@ input[type="text"]::placeholder { color: #5a637a; }
 
 .icone-mudo { color: var(--coral); margin-left: auto; flex-shrink: 0; }
 
-.lateral-dica {
+/* ---------- painel do usuário (canto inferior esquerdo) ---------- */
+
+.painel-usuario {
   border-top: 1px solid var(--borda);
-  padding: 14px 8px 4px;
-  font-size: 14px;
-  color: #6b7490;
-  text-align: center;
+  margin: 4px -12px -18px;
+  padding: 10px 10px;
+  background: #0e1119;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
-.lateral-dica strong { color: var(--texto-suave); }
+
+.usuario-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.avatar-pequeno {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+.avatar-pequeno.falando {
+  box-shadow: 0 0 0 2.5px var(--menta), 0 0 16px rgba(60, 242, 179, 0.6);
+}
+
+.usuario-textos {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.usuario-nome {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+}
+
+.usuario-estado {
+  font-size: 14px;
+  color: var(--texto-suave);
+}
+
+.usuario-botoes {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.botao-usuario {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--texto);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.botao-usuario:hover { background: var(--painel-mais-claro); }
+.botao-usuario.mudo {
+  color: var(--coral);
+  background: rgba(255, 92, 122, 0.14);
+}
 
 /* ---------- palco (área do vídeo) ---------- */
 
@@ -1162,6 +1228,116 @@ input[type="text"]::placeholder { color: #5a637a; }
 @keyframes toast-sai {
   to { opacity: 0; transform: translateX(24px); }
 }
+
+/* ============================================================
+   PALCO LIMPO — controles só aparecem com o mouse sobre o palco
+   ============================================================ */
+
+.acoes-palco {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(18, 21, 31, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  padding: 8px 10px;
+  box-shadow: var(--sombra);
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.palco.sem-transmissao .acoes-palco,
+.palco.mostrar-controles .acoes-palco {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.botoes-layout {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.palco.mostrar-controles .botoes-layout {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* nome e volume de cada quadro só aparecem ao passar o mouse nele */
+.tile-nome {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.tile:hover .tile-nome { opacity: 1; }
+
+.tile-controles {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(11, 13, 20, 0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--texto-suave);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 3;
+}
+.tile:hover .tile-controles { opacity: 1; }
+.tile.miniatura .tile-controles { display: none; }
+.tile-controles input[type="range"] {
+  width: 110px;
+  accent-color: var(--menta);
+  cursor: pointer;
+}
+.tile-controles svg { flex-shrink: 0; }
+
+/* ícone de chat ao lado do canal de voz em que você está */
+.canal-acao {
+  position: relative;
+  margin-left: 4px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto-suave);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.canal-acao:hover { color: var(--menta); background: var(--painel-mais-claro); }
+.canal-acao.ativo { color: var(--menta); }
+.canal-acao .selo {
+  top: -6px;
+  right: -7px;
+  min-width: 16px;
+  height: 16px;
+  font-size: 11px;
+  padding: 0 4px;
+  box-shadow: none;
+}
+
+.dica-config {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--texto-suave);
+}
+.dica-config strong { color: var(--texto); }
+.dica-config em { color: var(--texto-suave); }
 
 /* ---------- barra de rolagem discreta ---------- */
 ::-webkit-scrollbar { width: 9px; }

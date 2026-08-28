@@ -50,6 +50,14 @@ const estado = {
   focoId: null,             // no modo foco: qual transmissão está grande
   canais: [],               // canais de voz da sala: [{ id, nome }]
   meuCanal: null,           // em qual canal de voz eu estou agora
+  surdo: false,             // "headset mudo": não ouvir ninguém
+  micMudoPeloHeadset: false,
+  jaEntrei: false,          // já recebi o "bem-vindo" pelo menos uma vez
+  batimento: null,          // relógio do "batimento" com o anfitrião
+  ultimoPong: 0,
+  tentativasReconexao: 0,
+  reconexaoAgendada: null,
+  alarmeEntrada: null,
   pararMeuMonitor: null,
   saindo: false,
   chatAberto: false,
@@ -64,6 +72,21 @@ let contextoAudio = null // usado para detectar quem está falando
 const prefMic = () => localStorage.getItem('mydisc-mic') || ''            // '' = padrão do Windows
 const prefSaida = () => localStorage.getItem('mydisc-saida') || ''        // '' = padrão do Windows
 const prefResolucao = () => localStorage.getItem('mydisc-resolucao') || '1080'
+const prefSomTela = () => localStorage.getItem('mydisc-som-tela') || 'sistema' // 'sistema' ou 'dispositivo'
+const prefSomTelaDispositivo = () => localStorage.getItem('mydisc-som-tela-dispositivo') || ''
+
+// Servidores que ajudam os computadores a se acharem (STUN) e, quando a
+// conexão direta é bloqueada, retransmitem o áudio/vídeo (TURN)
+const SERVIDORES_ICE = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: 'turn:us-0.turn.peerjs.com:3478', username: 'peerjs', credential: 'peerjsp' },
+  { urls: 'turn:eu-0.turn.peerjs.com:3478', username: 'peerjs', credential: 'peerjsp' },
+  {
+    urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'],
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
+]
 
 // ---------- avisos rápidos (toasts) ----------
 
@@ -181,6 +204,24 @@ function renderizarParticipantes() {
     quantidade.textContent = pessoas.length ? String(pessoas.length) : ''
     cabecalho.appendChild(quantidade)
 
+    // No canal em que eu estou, o ícone de chat de texto (com selo de não lidas)
+    if (canal.id === estado.meuCanal) {
+      const botaoChat = document.createElement('button')
+      botaoChat.id = 'botao-chat'
+      botaoChat.className = 'canal-acao' + (estado.chatAberto ? ' ativo' : '')
+      botaoChat.title = 'Abrir / fechar o chat de texto'
+      botaoChat.innerHTML =
+        '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+        '<path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8.4L4 21.6A1 1 0 0 1 2.4 20.8V5A2 2 0 0 1 4 3z"/></svg>' +
+        '<span id="selo-chat" class="selo' + (estado.naoLidas ? '' : ' escondido') + '">' +
+        (estado.naoLidas > 9 ? '9+' : String(estado.naoLidas)) + '</span>'
+      botaoChat.addEventListener('click', (e) => {
+        e.stopPropagation()
+        abrirFecharChat()
+      })
+      cabecalho.appendChild(botaoChat)
+    }
+
     cabecalho.addEventListener('click', () => trocarDeCanal(canal.id))
     bloco.appendChild(cabecalho)
 
@@ -289,6 +330,7 @@ function construirItemParticipante(pessoa) {
 function marcarFalando(id, falando) {
   const item = document.querySelector(`.participante[data-id="${id}"]`)
   if (item) item.classList.toggle('falando', falando)
+  if (id === (estado.meuId || 'eu')) $('avatar-eu').classList.toggle('falando', falando)
 }
 
 // ============================================================
@@ -308,6 +350,7 @@ async function obterMicrofone() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia(restricoesDeMicrofone())
     estado.micEhSilencioso = false
+    vigiarMicrofone(stream)
     return stream
   } catch (primeiroErro) {
     // O microfone escolhido pode ter sido desconectado — tenta o padrão
@@ -323,6 +366,17 @@ async function obterMicrofone() {
     }
     return microfoneSilencioso(primeiroErro)
   }
+}
+
+// Se o microfone for desplugado (ou o PC dormir), pega outro automaticamente
+function vigiarMicrofone(stream) {
+  const trilha = stream.getAudioTracks()[0]
+  if (!trilha) return
+  trilha.addEventListener('ended', () => {
+    if (estado.saindo || !estado.peer || estado.streamMic !== stream) return
+    avisar('O microfone parou de responder — tentando outro…', 'info')
+    aplicarNovoMicrofone()
+  })
 }
 
 function microfoneSilencioso(erro) {
@@ -385,6 +439,7 @@ function tocarAudioDe(id, stream) {
   audio.srcObject = stream
   // Respeita o volume individual e a saída de som escolhida nas configurações
   audio.volume = (membro.volume != null ? membro.volume : 100) / 100
+  audio.muted = estado.surdo
   if (prefSaida() && audio.setSinkId) {
     audio.setSinkId(prefSaida()).catch(() => { /* saída não existe mais: usa a padrão */ })
   }
@@ -418,7 +473,8 @@ function garantirMembro(id, nome) {
 function criarPeer(idDesejado) {
   // Sem argumentos o PeerJS usa o servidor público e gratuito deles
   // apenas para o "aperto de mão"; áudio e vídeo vão direto entre os PCs.
-  const peer = idDesejado ? new Peer(idDesejado, { debug: 1 }) : new Peer({ debug: 1 })
+  const opcoes = { debug: 1, config: { iceServers: SERVIDORES_ICE, sdpSemantics: 'unified-plan' } }
+  const peer = idDesejado ? new Peer(idDesejado, opcoes) : new Peer(opcoes)
 
   // Alguém está me ligando (voz ou tela)
   peer.on('call', (chamada) => {
@@ -435,6 +491,7 @@ function criarPeer(idDesejado) {
       chamada.on('close', () => {
         if (membro.chamadaVoz === chamada) desligarVozDe(chamada.peer)
       })
+      vigiarChamadaDeVoz(chamada, chamada.peer)
     }
 
     if (meta.tipo === 'tela') {
@@ -518,8 +575,10 @@ async function criarSala(tentativa = 0) {
   // Alguém novo chegou na sala
   peer.on('connection', (conexao) => {
     conexao.on('open', () => {
+      const jaConhecido = estado.membros.has(conexao.peer)
+
       // Sala cheia? Avisa e desconecta educadamente
-      if (estado.membros.size + 1 >= LIMITE_PESSOAS) {
+      if (!jaConhecido && estado.membros.size + 1 >= LIMITE_PESSOAS) {
         conexao.send({ tipo: 'sala-cheia' })
         setTimeout(() => conexao.close(), 300)
         return
@@ -540,24 +599,36 @@ async function criarSala(tentativa = 0) {
         historico: estado.historicoChat.slice(-50)
       })
 
-      // Avisa os demais (quem chega sempre começa no canal Geral)
-      enviarParaTodos({ tipo: 'entrou', id: conexao.peer, nome: nomeNovo, canal: CANAL_PADRAO.id }, conexao.peer)
-
       const membro = garantirMembro(conexao.peer, nomeNovo)
+      const conexaoAntiga = membro.conexaoDados
       membro.conexaoDados = conexao
-      membro.canal = CANAL_PADRAO.id
-      renderizarParticipantes()
-      avisar(`${nomeNovo} entrou na sala.`, 'info')
-      mensagemSistema(`${nomeNovo} entrou na sala`)
+      if (conexaoAntiga && conexaoAntiga !== conexao) {
+        try { conexaoAntiga.close() } catch (_) { /* ignora */ }
+      }
 
-      // Se eu transmito no canal Geral, incluo a pessoa nova
-      if (estado.streamTela && estado.meuCanal === CANAL_PADRAO.id) ligarTelaPara(conexao.peer)
+      if (!jaConhecido) {
+        // Avisa os demais (quem chega sempre começa no canal Geral)
+        enviarParaTodos({ tipo: 'entrou', id: conexao.peer, nome: nomeNovo, canal: CANAL_PADRAO.id }, conexao.peer)
+        membro.canal = CANAL_PADRAO.id
+        avisar(nomeNovo + ' entrou na sala.', 'info')
+        mensagemSistema(nomeNovo + ' entrou na sala')
+      }
+      renderizarParticipantes()
+
+      // Se eu transmito no canal da pessoa, incluo ela
+      if (estado.streamTela && estado.meuCanal === membro.canal) ligarTelaPara(conexao.peer)
     })
 
     conexao.on('data', (mensagem) => tratarMensagemComoAnfitriao(conexao, mensagem))
 
-    conexao.on('close', () => removerMembro(conexao.peer))
-    conexao.on('error', () => removerMembro(conexao.peer))
+    // Só remove a pessoa se ESTA conexão ainda for a atual dela
+    // (uma reconexão substitui a antiga sem derrubar ninguém)
+    const seForAtual = () => {
+      const m = estado.membros.get(conexao.peer)
+      if (m && m.conexaoDados === conexao) removerMembro(conexao.peer)
+    }
+    conexao.on('close', seForAtual)
+    conexao.on('error', seForAtual)
   })
 }
 
@@ -581,6 +652,12 @@ function tratarMensagemComoAnfitriao(conexao, mensagem) {
     enviarParaTodos({
       tipo: 'compartilhando', id, nome: membro.nome, ativo: !!mensagem.ativo
     }, id)
+  }
+
+  if (mensagem.tipo === 'ping') {
+    // Batimento cardíaco: respondo para a pessoa saber que a sala está viva
+    try { conexao.send({ tipo: 'pong' }) } catch (_) { /* ignora */ }
+    return
   }
 
   if (mensagem.tipo === 'mudei-canal') {
@@ -747,7 +824,8 @@ function enviarMensagemChat() {
 function abrirFecharChat() {
   estado.chatAberto = !estado.chatAberto
   $('painel-chat').classList.toggle('escondido', !estado.chatAberto)
-  $('botao-chat').classList.toggle('ativo', estado.chatAberto)
+  const botaoChat = $('botao-chat')
+  if (botaoChat) botaoChat.classList.toggle('ativo', estado.chatAberto)
   if (estado.chatAberto) {
     estado.naoLidas = 0
     atualizarSeloChat()
@@ -759,6 +837,7 @@ function abrirFecharChat() {
 
 function atualizarSeloChat() {
   const selo = $('selo-chat')
+  if (!selo) return
   selo.textContent = estado.naoLidas > 9 ? '9+' : String(estado.naoLidas)
   selo.classList.toggle('escondido', estado.naoLidas === 0)
 }
@@ -796,65 +875,152 @@ async function entrarEmSala() {
     // Pega o microfone ANTES de ligar para os outros
     estado.streamMic = await obterMicrofone()
 
-    const conexao = peer.connect(PREFIXO_SALA + codigo.toLowerCase(), {
-      reliable: true,
-      metadata: { nome: estado.nome }
-    })
-    estado.conexaoAnfitriao = conexao
+    conectarAoAnfitriao(false)
 
     // Se em 10 segundos ninguém responder, desiste
-    const alarme = setTimeout(() => {
-      if (!estado.membros.size) {
+    estado.alarmeEntrada = setTimeout(() => {
+      if (!estado.jaEntrei) {
         avisar('Não consegui entrar na sala. Confira o código.', 'erro')
         sairDaSala(null, true)
       }
     }, 10000)
 
-    conexao.on('data', (mensagem) => {
-      tratarMensagemComoConvidado(mensagem, alarme)
-    })
-
-    conexao.on('close', () => {
-      if (!estado.saindo) sairDaSala('A sala foi encerrada pelo anfitrião.')
-    })
+    // Batimento cardíaco: a cada 15 s pergunto ao anfitrião se a sala está viva;
+    // sem resposta por 45 s, refaço a conexão
+    estado.ultimoPong = Date.now()
+    estado.batimento = setInterval(() => {
+      if (estado.saindo || !estado.conexaoAnfitriao) return
+      if (estado.conexaoAnfitriao.open) {
+        try { estado.conexaoAnfitriao.send({ tipo: 'ping' }) } catch (_) { /* ignora */ }
+      }
+      if (Date.now() - estado.ultimoPong > 45000) {
+        estado.ultimoPong = Date.now()
+        perderContatoComAnfitriao()
+      }
+    }, 15000)
   })
 }
 
-function tratarMensagemComoConvidado(mensagem, alarme) {
+// Abre (ou reabre) o canal de dados com o anfitrião
+function conectarAoAnfitriao(reentrada) {
+  const conexao = estado.peer.connect(PREFIXO_SALA + estado.codigo.toLowerCase(), {
+    reliable: true,
+    metadata: { nome: estado.nome, reentrada: !!reentrada }
+  })
+  estado.conexaoAnfitriao = conexao
+
+  conexao.on('open', () => {
+    estado.tentativasReconexao = 0
+    estado.ultimoPong = Date.now()
+    if (reentrada) {
+      atualizarStatus('conectado', 'Conectado')
+      avisar('Reconectado à sala!')
+    }
+  })
+  conexao.on('data', (mensagem) => tratarMensagemComoConvidado(mensagem))
+  conexao.on('close', () => {
+    if (!estado.saindo && estado.conexaoAnfitriao === conexao) perderContatoComAnfitriao()
+  })
+  conexao.on('error', () => {
+    if (!estado.saindo && estado.conexaoAnfitriao === conexao) perderContatoComAnfitriao()
+  })
+  return conexao
+}
+
+// Perdi o anfitrião: tento reconectar algumas vezes antes de desistir
+function perderContatoComAnfitriao() {
+  if (estado.saindo || estado.souAnfitriao || estado.reconexaoAgendada) return
+  estado.tentativasReconexao++
+
+  if (estado.tentativasReconexao > 5) {
+    sairDaSala('A conexão com a sala caiu e não consegui voltar. Entre de novo com o código.')
+    return
+  }
+
+  atualizarStatus('conectando', 'Reconectando…')
+  if (estado.tentativasReconexao === 1) avisar('Perdi o contato com a sala. Tentando reconectar…', 'info')
+
+  estado.reconexaoAgendada = setTimeout(() => {
+    estado.reconexaoAgendada = null
+    if (estado.saindo || !estado.peer) return
+    if (estado.peer.disconnected) { try { estado.peer.reconnect() } catch (_) { /* ignora */ } }
+    try { if (estado.conexaoAnfitriao) estado.conexaoAnfitriao.close() } catch (_) { /* ignora */ }
+    conectarAoAnfitriao(true)
+  }, 2000 * estado.tentativasReconexao)
+}
+
+function tratarMensagemComoConvidado(mensagem) {
   if (!mensagem || typeof mensagem !== 'object') return
 
+  if (mensagem.tipo === 'pong') {
+    estado.ultimoPong = Date.now()
+    return
+  }
+
+  if (mensagem.tipo === 'encerrando') {
+    sairDaSala('A sala foi encerrada pelo anfitrião.')
+    return
+  }
+
   if (mensagem.tipo === 'sala-cheia') {
-    clearTimeout(alarme)
+    clearTimeout(estado.alarmeEntrada)
     avisar('Essa sala já está cheia (máximo de 10 pessoas).', 'erro')
     sairDaSala(null, true)
     return
   }
 
   if (mensagem.tipo === 'bemvindo') {
-    clearTimeout(alarme)
+    clearTimeout(estado.alarmeEntrada)
     $('botao-entrar').disabled = false
+    const reentrada = estado.jaEntrei
+    estado.jaEntrei = true
 
-    // A lista de canais da sala (e eu começo no Geral)
+    // A lista de canais da sala
     estado.canais = mensagem.canais && mensagem.canais.length
       ? mensagem.canais : [{ ...CANAL_PADRAO }]
-    estado.meuCanal = CANAL_PADRAO.id
 
-    // O anfitrião entra na minha lista
+    // O anfitrião entra (ou se atualiza) na minha lista
     const idAnfitriao = PREFIXO_SALA + estado.codigo.toLowerCase()
-    estado.membros.set(idAnfitriao, {
-      nome: mensagem.nomeAnfitriao,
-      ehAnfitriao: true,
-      mudo: false,
-      canal: mensagem.canalAnfitriao || CANAL_PADRAO.id
-    })
+    const anfitriao = garantirMembro(idAnfitriao, mensagem.nomeAnfitriao)
+    anfitriao.ehAnfitriao = true
+    anfitriao.canal = mensagem.canalAnfitriao || CANAL_PADRAO.id
 
     // E os outros convidados também
     for (const m of mensagem.membros) {
-      estado.membros.set(m.id, {
-        nome: m.nome, ehAnfitriao: false, mudo: !!m.mudo, canal: m.canal || CANAL_PADRAO.id
-      })
+      const outro = garantirMembro(m.id, m.nome)
+      outro.mudo = !!m.mudo
+      outro.canal = m.canal || CANAL_PADRAO.id
+    }
+    // Quem saiu enquanto eu estava desconectado
+    for (const id of [...estado.membros.keys()]) {
+      if (id !== idAnfitriao && !mensagem.membros.some((m) => m.id === id)) removerMembro(id)
     }
 
+    if (reentrada) {
+      // Voltei para a sala: o anfitrião me colocou no Geral; religo a voz e
+      // volto sozinho para o canal em que eu estava
+      const canalDesejado = estado.meuCanal
+      estado.meuCanal = CANAL_PADRAO.id
+      for (const [id, m] of estado.membros) {
+        if (m.canal === estado.meuCanal) ligarVozPara(id)
+      }
+      if (canalDesejado && canalDesejado !== CANAL_PADRAO.id &&
+          estado.canais.some((c) => c.id === canalDesejado)) {
+        trocarDeCanal(canalDesejado)
+      }
+      if (estado.streamTela) {
+        for (const [, chamada] of estado.chamadasTela) { try { chamada.close() } catch (_) { /* ignora */ } }
+        estado.chamadasTela.clear()
+        for (const [id, m] of estado.membros) {
+          if (m.canal === estado.meuCanal) ligarTelaPara(id)
+        }
+        estado.conexaoAnfitriao.send({ tipo: 'compartilhando', ativo: true })
+      }
+      renderizarParticipantes()
+      return
+    }
+
+    estado.meuCanal = CANAL_PADRAO.id
     entrarNaTelaDaSala()
     atualizarStatus('conectado', 'Conectado')
     ligarMeuDetectorDeFala()
@@ -939,6 +1105,66 @@ function ligarVozPara(id) {
   chamada.on('stream', (stream) => tocarAudioDe(id, stream))
   chamada.on('close', () => {
     if (membro.chamadaVoz === chamada) desligarVozDe(id)
+  })
+  vigiarChamadaDeVoz(chamada, id)
+}
+
+// Observa a saúde de uma ligação de voz; se ela cair, tenta refazer
+function vigiarChamadaDeVoz(chamada, id, tentativa = 0) {
+  const conexao = chamada.peerConnection
+  if (!conexao) {
+    if (tentativa < 20) setTimeout(() => vigiarChamadaDeVoz(chamada, id, tentativa + 1), 500)
+    return
+  }
+  let espera = null
+  conexao.addEventListener('connectionstatechange', () => {
+    const situacao = conexao.connectionState
+    if (situacao === 'connected') {
+      clearTimeout(espera)
+      espera = null
+      return
+    }
+    if (situacao === 'failed') recuperarVozCom(id, chamada)
+    if (situacao === 'disconnected' && !espera) {
+      // Dá 8 segundos para a rede se recuperar sozinha antes de refazer
+      espera = setTimeout(() => {
+        if (conexao.connectionState !== 'connected') recuperarVozCom(id, chamada)
+      }, 8000)
+    }
+  })
+}
+
+function recuperarVozCom(id, chamadaAntiga) {
+  const membro = estado.membros.get(id)
+  if (!membro || estado.saindo) return
+  if (membro.chamadaVoz !== chamadaAntiga) return // já foi trocada por outra
+  if (membro.canal !== estado.meuCanal) return    // a pessoa mudou de canal
+  console.log('Voz caiu com', membro.nome, '— refazendo a ligação')
+  desligarVozDe(id)
+  // Só um dos dois lados religa (o de id "menor"), para não ligarem ao mesmo tempo
+  if (String(estado.meuId) < String(id)) {
+    setTimeout(() => {
+      if (!estado.saindo && !membro.chamadaVoz && membro.canal === estado.meuCanal) ligarVozPara(id)
+    }, 800)
+  }
+}
+
+// O mesmo cuidado para as telas que EU envio
+function vigiarChamadaDeTela(chamada, id, tentativa = 0) {
+  const conexao = chamada.peerConnection
+  if (!conexao) {
+    if (tentativa < 20) setTimeout(() => vigiarChamadaDeTela(chamada, id, tentativa + 1), 500)
+    return
+  }
+  conexao.addEventListener('connectionstatechange', () => {
+    if (conexao.connectionState !== 'failed') return
+    if (estado.chamadasTela.get(id) !== chamada || !estado.streamTela) return
+    try { chamada.close() } catch (_) { /* ignora */ }
+    estado.chamadasTela.delete(id)
+    const membro = estado.membros.get(id)
+    setTimeout(() => {
+      if (estado.streamTela && membro && membro.canal === estado.meuCanal) ligarTelaPara(id)
+    }, 1000)
   })
 }
 
@@ -1069,6 +1295,33 @@ function alternarMicrofone() {
   renderizarParticipantes()
 }
 
+function alternarHeadset() {
+  estado.surdo = !estado.surdo
+
+  for (const [, membro] of estado.membros) {
+    if (membro.audioEl) membro.audioEl.muted = estado.surdo
+  }
+  for (const [, transmissao] of estado.transmissoes) {
+    const video = transmissao.tile.querySelector('video')
+    if (video && !transmissao.propria) video.muted = estado.surdo
+  }
+
+  $('botao-headset').classList.toggle('mudo', estado.surdo)
+  $('icone-headset-ligado').classList.toggle('escondido', estado.surdo)
+  $('icone-headset-mudo').classList.toggle('escondido', !estado.surdo)
+
+  if (estado.surdo) {
+    if (!estado.micMudo && !estado.micEhSilencioso) {
+      alternarMicrofone()
+      estado.micMudoPeloHeadset = true
+    }
+    avisar('Headset silenciado: você não ouve ninguém e seu microfone está mudo.', 'info')
+  } else if (estado.micMudoPeloHeadset) {
+    estado.micMudoPeloHeadset = false
+    if (estado.micMudo) alternarMicrofone()
+  }
+}
+
 // ============================================================
 // COMPARTILHAMENTO DE TELA (Full HD)
 // ============================================================
@@ -1128,6 +1381,27 @@ async function alternarCompartilhamento() {
     }
   }
 
+  // Som da transmissão vindo de um dispositivo escolhido nas configurações
+  // (ex.: um cabo virtual recebendo só o som do jogo)
+  if (querSomDeDispositivo && prefSomTelaDispositivo()) {
+    try {
+      const somDispositivo = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: prefSomTelaDispositivo() },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 2
+        }
+      })
+      for (const trilhaSom of somDispositivo.getAudioTracks()) stream.addTrack(trilhaSom)
+    } catch (erroSom) {
+      console.log('Sem som do dispositivo escolhido:', erroSom.name, erroSom.message)
+      avisar('Não consegui capturar o dispositivo de som escolhido — transmitindo só o vídeo.', 'info')
+    }
+  }
+  querSomDeDispositivo = false
+
   try {
     estado.streamTela = stream
 
@@ -1170,6 +1444,7 @@ function ligarTelaPara(id) {
   })
   if (!chamada) return
   estado.chamadasTela.set(id, chamada)
+  vigiarChamadaDeTela(chamada, id)
   // Chegou mais um espectador: reequilibra a qualidade de todo mundo
   atualizarQualidadeDaTela()
 }
@@ -1254,7 +1529,7 @@ function adicionarTransmissao(id, nome, stream, propria) {
   video.autoplay = true
   video.playsInline = true
   video.srcObject = stream
-  video.muted = !!propria // nunca tocar meu próprio som de volta
+  video.muted = !!propria || estado.surdo // nunca tocar meu próprio som de volta
   if (!propria && prefSaida() && video.setSinkId) {
     video.setSinkId(prefSaida()).catch(() => { /* saída não existe mais: usa a padrão */ })
   }
@@ -1270,6 +1545,37 @@ function adicionarTransmissao(id, nome, stream, propria) {
 
   quadro.appendChild(video)
   quadro.appendChild(etiqueta)
+
+  // Controle de volume desta transmissão (só para mim, separado das vozes)
+  if (!propria) {
+    const controles = document.createElement('div')
+    controles.className = 'tile-controles'
+    if (stream.getAudioTracks().length) {
+      controles.innerHTML =
+        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+        '<path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>'
+      const controle = document.createElement('input')
+      controle.type = 'range'
+      controle.min = '0'
+      controle.max = '100'
+      controle.value = '100'
+      controle.title = 'Volume desta transmissão (só para você)'
+      const valor = document.createElement('span')
+      valor.className = 'valor-volume'
+      valor.textContent = '100%'
+      controle.addEventListener('input', () => {
+        video.volume = Number(controle.value) / 100
+        valor.textContent = controle.value + '%'
+      })
+      controles.appendChild(controle)
+      controles.appendChild(valor)
+    } else {
+      controles.textContent = 'Transmissão sem som'
+    }
+    controles.addEventListener('click', (e) => e.stopPropagation())
+    controles.addEventListener('dblclick', (e) => e.stopPropagation())
+    quadro.appendChild(controles)
+  }
 
   // No modo Foco, clicar na tela pequena traz ela para a frente
   quadro.addEventListener('click', () => {
@@ -1308,6 +1614,7 @@ function renderizarPalco() {
   $('palco-vazio').classList.toggle('escondido', quantas > 0)
   $('palco-video').classList.toggle('escondido', quantas === 0)
   $('botoes-layout').classList.toggle('escondido', quantas < 2)
+  document.querySelector('.palco').classList.toggle('sem-transmissao', quantas === 0)
 
   const area = $('area-tiles')
   area.className = 'area-tiles ' + (quantas < 2 ? 'uma' : estado.layout)
@@ -1320,26 +1627,30 @@ function renderizarPalco() {
     area.appendChild(transmissao.tile)
   }
 
-  atualizarFaixa()
   $('layout-dividida').classList.toggle('ativa', estado.layout === 'dividida')
   $('layout-foco').classList.toggle('ativa', estado.layout === 'foco')
 }
 
-// Texto da faixa do topo: quem está transmitindo agora
-function atualizarFaixa() {
-  const nomes = []
-  let aMinhaEstaNoAr = false
-  for (const [, transmissao] of estado.transmissoes) {
-    if (transmissao.propria) aMinhaEstaNoAr = true
-    else nomes.push(transmissao.nome)
-  }
+// Durante uma transmissão os controles ficam escondidos e só aparecem
+// quando o mouse se mexe sobre o palco (somem de novo após 2,5 s parado)
+const elementoPalco = document.querySelector('.palco')
+let temporizadorControles = null
 
-  let texto = ''
-  if (aMinhaEstaNoAr && nomes.length) texto = `Você e ${nomes[0]} estão compartilhando`
-  else if (aMinhaEstaNoAr) texto = 'Você está compartilhando'
-  else if (nomes.length > 1) texto = `Telas de ${nomes[0]} e ${nomes[1]}`
-  else if (nomes.length === 1) texto = `Tela de ${nomes[0]}`
-  $('texto-compartilhando').textContent = texto
+function mostrarControlesDoPalco() {
+  elementoPalco.classList.add('mostrar-controles')
+  clearTimeout(temporizadorControles)
+  temporizadorControles = setTimeout(() => elementoPalco.classList.remove('mostrar-controles'), 2500)
+}
+
+elementoPalco.addEventListener('mousemove', mostrarControlesDoPalco)
+elementoPalco.addEventListener('mouseleave', () => {
+  clearTimeout(temporizadorControles)
+  elementoPalco.classList.remove('mostrar-controles')
+})
+// Com o mouse parado em cima dos botões, eles não somem
+for (const idFixo of ['acoes-palco', 'botoes-layout']) {
+  $(idFixo).addEventListener('mouseenter', () => clearTimeout(temporizadorControles))
+  $(idFixo).addEventListener('mouseleave', mostrarControlesDoPalco)
 }
 
 function trocarLayout(novo) {
@@ -1356,12 +1667,16 @@ let fontesDisponiveis = []
 let fonteSelecionada = null
 let abaAtual = 'tela'
 let ultimoPedidoComSom = false // a última escolha pediu o som do sistema?
+let querSomDeDispositivo = false // a última escolha pediu som de um dispositivo específico?
 
 window.mydisc.aoAbrirSeletorFonte((fontes) => {
   fontesDisponiveis = fontes
   fonteSelecionada = null
   abaAtual = 'tela'
   $('opcao-com-som').checked = false
+  $('texto-opcao-som').textContent = prefSomTela() === 'dispositivo'
+    ? 'Compartilhar também o som (do dispositivo escolhido nas configurações)'
+    : 'Compartilhar também o som do computador'
   $('botao-confirmar-fonte').disabled = true
   atualizarAbas()
   preencherGradeDeFontes()
@@ -1427,16 +1742,20 @@ function preencherGradeDeFontes() {
 
 function confirmarFonte() {
   if (!fonteSelecionada) return
-  ultimoPedidoComSom = $('opcao-com-som').checked
+  const querSom = $('opcao-com-som').checked
+  const modoSistema = prefSomTela() === 'sistema'
+  ultimoPedidoComSom = querSom && modoSistema
+  querSomDeDispositivo = querSom && !modoSistema
   window.mydisc.responderFonte({
     id: fonteSelecionada,
-    comSom: $('opcao-com-som').checked
+    comSom: querSom && modoSistema // o som "de todo o computador" é pedido ao Electron
   })
   $('modal-seletor').classList.add('escondido')
 }
 
 function cancelarFonte() {
   ultimoPedidoComSom = false
+  querSomDeDispositivo = false
   window.mydisc.responderFonte(null)
   $('modal-seletor').classList.add('escondido')
 }
@@ -1454,7 +1773,19 @@ async function abrirConfiguracoes() {
     radio.checked = radio.value === salva
   })
 
+  // Marca o modo de som da transmissão
+  document.querySelectorAll('input[name="som-tela"]').forEach((radio) => {
+    radio.checked = radio.value === prefSomTela()
+  })
+  atualizarVisibilidadeSomTela()
+
   await preencherListaDeAparelhos()
+}
+
+function atualizarVisibilidadeSomTela() {
+  const porDispositivo = prefSomTela() === 'dispositivo'
+  $('seletor-som-tela').classList.toggle('escondido', !porDispositivo)
+  $('dica-som-tela').classList.toggle('escondido', !porDispositivo)
 }
 
 function fecharConfiguracoes() {
@@ -1479,6 +1810,8 @@ async function preencherListaDeAparelhos() {
     prefMic(), 'Microfone')
   montarSeletor($('seletor-saida'), aparelhos.filter((a) => a.kind === 'audiooutput'),
     prefSaida(), 'Saída')
+  montarSeletor($('seletor-som-tela'), aparelhos.filter((a) => a.kind === 'audioinput'),
+    prefSomTelaDispositivo(), 'Dispositivo')
 }
 
 function montarSeletor(seletor, aparelhos, escolhido, apelido) {
@@ -1509,7 +1842,7 @@ async function aplicarNovoMicrofone() {
   if (!estado.peer) return // fora da sala, a escolha vale na próxima entrada
 
   try {
-    const novoStream = await navigator.mediaDevices.getUserMedia(restricoesDeMicrofone())
+    const novoStream = await obterMicrofone()
     const novaTrilha = novoStream.getAudioTracks()[0]
     novaTrilha.enabled = !estado.micMudo
 
@@ -1524,9 +1857,8 @@ async function aplicarNovoMicrofone() {
       estado.streamMic.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
     }
     estado.streamMic = novoStream
-    estado.micEhSilencioso = false
     ligarMeuDetectorDeFala()
-    avisar('Microfone trocado!')
+    if (!estado.micEhSilencioso) avisar('Microfone trocado!')
   } catch (_) {
     avisar('Não consegui usar esse microfone. Confira se ele está conectado.', 'erro')
   }
@@ -1567,6 +1899,10 @@ function aplicarResolucaoAoVivo() {
 
 function entrarNaTelaDaSala() {
   $('texto-codigo').textContent = estado.codigo
+  $('avatar-eu').textContent = iniciaisDoNome(estado.nome)
+  $('avatar-eu').style.background = corDoNome(estado.nome)
+  $('nome-eu').textContent = estado.nome
+  $('estado-eu').textContent = 'Sala ' + estado.codigo
   // Só o anfitrião pode criar canais de voz
   $('botao-novo-canal').classList.toggle('escondido', !estado.souAnfitriao)
   trocarParaTela('tela-sala')
@@ -1575,6 +1911,18 @@ function entrarNaTelaDaSala() {
 
 function sairDaSala(motivo, silencioso = false) {
   estado.saindo = true
+
+  // Anfitrião avisa todo mundo na hora, sem esperar a conexão cair
+  if (estado.souAnfitriao) enviarParaTodos({ tipo: 'encerrando' })
+
+  clearInterval(estado.batimento)
+  estado.batimento = null
+  clearTimeout(estado.reconexaoAgendada)
+  estado.reconexaoAgendada = null
+  clearTimeout(estado.alarmeEntrada)
+  estado.alarmeEntrada = null
+  estado.tentativasReconexao = 0
+  estado.jaEntrei = false
 
   if (estado.pararMeuMonitor) { estado.pararMeuMonitor(); estado.pararMeuMonitor = null }
 
@@ -1617,6 +1965,12 @@ function sairDaSala(motivo, silencioso = false) {
   $('botao-mic').classList.remove('mudo')
   $('icone-mic-ligado').classList.remove('escondido')
   $('icone-mic-mudo').classList.add('escondido')
+  estado.surdo = false
+  estado.micMudoPeloHeadset = false
+  $('botao-headset').classList.remove('mudo')
+  $('icone-headset-ligado').classList.remove('escondido')
+  $('icone-headset-mudo').classList.add('escondido')
+  $('avatar-eu').classList.remove('falando')
   $('botao-tela').classList.remove('transmitindo')
   $('texto-botao-tela').textContent = 'Compartilhar tela'
   $('botao-entrar').disabled = false
@@ -1630,7 +1984,6 @@ function sairDaSala(motivo, silencioso = false) {
   $('chat-mensagens').innerHTML = ''
   $('campo-chat').value = ''
   $('painel-chat').classList.add('escondido')
-  $('botao-chat').classList.remove('ativo')
   atualizarSeloChat()
 
   renderizarPalco()
@@ -1657,6 +2010,7 @@ $('campo-nome').addEventListener('keydown', (e) => {
 })
 
 $('botao-mic').addEventListener('click', alternarMicrofone)
+$('botao-headset').addEventListener('click', alternarHeadset)
 $('botao-tela').addEventListener('click', alternarCompartilhamento)
 $('botao-sair').addEventListener('click', () => sairDaSala('Você saiu da sala.'))
 
@@ -1675,7 +2029,6 @@ $('campo-novo-canal').addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $('form-novo-canal').classList.add('escondido')
 })
 
-$('botao-chat').addEventListener('click', abrirFecharChat)
 $('botao-enviar-chat').addEventListener('click', enviarMensagemChat)
 $('campo-chat').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') enviarMensagemChat()
@@ -1717,6 +2070,18 @@ document.querySelectorAll('input[name="resolucao"]').forEach((radio) => {
     localStorage.setItem('mydisc-resolucao', radio.value)
     aplicarResolucaoAoVivo()
   })
+})
+
+document.querySelectorAll('input[name="som-tela"]').forEach((radio) => {
+  radio.addEventListener('change', () => {
+    if (!radio.checked) return
+    localStorage.setItem('mydisc-som-tela', radio.value)
+    atualizarVisibilidadeSomTela()
+  })
+})
+
+$('seletor-som-tela').addEventListener('change', () => {
+  localStorage.setItem('mydisc-som-tela-dispositivo', $('seletor-som-tela').value)
 })
 
 // Se um aparelho for plugado/desplugado com a janela aberta, atualiza as listas
@@ -1815,5 +2180,6 @@ if (nomeSalvo) $('campo-nome').value = nomeSalvo
 
 // Encerra as conexões direitinho ao fechar o aplicativo
 window.addEventListener('beforeunload', () => {
+  if (estado.souAnfitriao) { try { enviarParaTodos({ tipo: 'encerrando' }) } catch (_) { /* ignora */ } }
   if (estado.peer) { try { estado.peer.destroy() } catch (_) { /* ignora */ } }
 })

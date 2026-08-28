@@ -29,6 +29,11 @@ let avisoBandejaMostrado = false
 // Guarda o "callback" pendente enquanto o usuário escolhe qual tela compartilhar
 let pedidoDeCaptura = null
 
+// Lembra a última tela escolhida: se a captura COM som do sistema falhar,
+// a interface pede para repetir a mesma tela sem som, sem reabrir o seletor
+let ultimaFonteEscolhida = null
+let repetirFonteSemSom = false
+
 function mostrarJanela() {
   if (!janela) return
   if (janela.isMinimized()) janela.restore()
@@ -119,6 +124,17 @@ app.whenReady().then(() => {
         fetchWindowIcons: true
       })
 
+      // Segunda tentativa automática (sem som do sistema) com a mesma tela de antes
+      if (repetirFonteSemSom && ultimaFonteEscolhida) {
+        repetirFonteSemSom = false
+        const mesma = fontes.find((f) => f.id === ultimaFonteEscolhida)
+        if (mesma) {
+          responder({ video: mesma })
+          return
+        }
+      }
+      repetirFonteSemSom = false
+
       pedidoDeCaptura = { responder, fontes }
 
       // Envia versões "leves" das fontes (miniatura em imagem) para a interface
@@ -175,13 +191,29 @@ ipcMain.on('fonte-escolhida', (evento, escolha) => {
     return
   }
 
+  ultimaFonteEscolhida = fonte.id
+
   const resposta = { video: fonte }
   // No Windows dá para capturar também o som do computador ("loopback")
   if (escolha.comSom) resposta.audio = 'loopback'
 
-  try { responder(resposta) } catch (erro) {
-    console.error('Erro ao entregar a captura:', erro)
+  try {
+    responder(resposta)
+  } catch (erro) {
+    console.error('Erro ao entregar a captura com som:', erro)
+    // O som do sistema não foi aceito: segue só com o vídeo e avisa a interface
+    try {
+      responder({ video: fonte })
+      if (janela && !janela.isDestroyed()) janela.webContents.send('som-do-sistema-indisponivel')
+    } catch (erro2) {
+      console.error('Erro ao entregar a captura:', erro2)
+    }
   }
+})
+
+// A interface avisa que a captura com som falhou e pede a mesma tela sem som
+ipcMain.on('repetir-fonte-sem-som', () => {
+  repetirFonteSemSom = true
 })
 
 // ============================================================

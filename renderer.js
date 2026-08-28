@@ -1088,20 +1088,47 @@ async function alternarCompartilhamento() {
     return
   }
 
+  // Pede a captura na resolução escolhida nas configurações
+  // (Full HD 1920x1080 ou HD 1280x720), a 30 quadros por segundo.
+  // O Electron vai abrir o nosso seletor de tela/janela.
+  const emHd = prefResolucao() === '720'
+  const restricoesVideo = {
+    width: { ideal: emHd ? 1280 : 1920 },
+    height: { ideal: emHd ? 720 : 1080 },
+    frameRate: { ideal: 30, max: 60 }
+  }
+
+  let stream = null
   try {
-    // Pede a captura na resolução escolhida nas configurações
-    // (Full HD 1920x1080 ou HD 1280x720), a 30 quadros por segundo.
-    // O Electron vai abrir o nosso seletor de tela/janela.
-    const emHd = prefResolucao() === '720'
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        width: { ideal: emHd ? 1280 : 1920 },
-        height: { ideal: emHd ? 720 : 1080 },
-        frameRate: { ideal: 30, max: 60 }
-      },
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: restricoesVideo,
       audio: true // o som do sistema só vem se a caixinha for marcada
     })
+  } catch (erro) {
+    console.log('Falha ao capturar a tela:', erro.name, erro.message)
 
+    // Usuário cancelou o seletor — não é um problema
+    if (erro.name === 'NotAllowedError') return
+
+    // Falhou sem ter pedido som: erro de verdade, mostra na tela
+    if (!ultimoPedidoComSom) {
+      avisar(`Não consegui iniciar a transmissão (${erro.name}). Tente de novo.`, 'erro')
+      return
+    }
+
+    // A captura COM som do sistema falhou: repete a mesma tela só com o vídeo
+    avisar('Não deu para capturar o som do computador — transmitindo só o vídeo.', 'info')
+    try {
+      window.mydisc.repetirFonteSemSom()
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: restricoesVideo, audio: false })
+    } catch (erro2) {
+      console.log('Falha ao capturar a tela sem som:', erro2.name, erro2.message)
+      avisar(`Não consegui iniciar a transmissão (${erro2.name}). Tente de novo.`, 'erro')
+      return
+    }
+  }
+
+  try {
     estado.streamTela = stream
 
     const trilha = stream.getVideoTracks()[0]
@@ -1130,8 +1157,8 @@ async function alternarCompartilhamento() {
     $('texto-botao-tela').textContent = 'Parar de compartilhar'
     renderizarParticipantes()
   } catch (erro) {
-    // Usuário cancelou o seletor — não é um problema
-    console.log('Compartilhamento cancelado ou negado:', erro.name)
+    console.log('Erro ao iniciar a transmissão:', erro.name, erro.message)
+    avisar('Algo deu errado ao iniciar a transmissão. Tente de novo.', 'erro')
   }
 }
 
@@ -1328,6 +1355,7 @@ function trocarLayout(novo) {
 let fontesDisponiveis = []
 let fonteSelecionada = null
 let abaAtual = 'tela'
+let ultimoPedidoComSom = false // a última escolha pediu o som do sistema?
 
 window.mydisc.aoAbrirSeletorFonte((fontes) => {
   fontesDisponiveis = fontes
@@ -1399,6 +1427,7 @@ function preencherGradeDeFontes() {
 
 function confirmarFonte() {
   if (!fonteSelecionada) return
+  ultimoPedidoComSom = $('opcao-com-som').checked
   window.mydisc.responderFonte({
     id: fonteSelecionada,
     comSom: $('opcao-com-som').checked
@@ -1407,6 +1436,7 @@ function confirmarFonte() {
 }
 
 function cancelarFonte() {
+  ultimoPedidoComSom = false
   window.mydisc.responderFonte(null)
   $('modal-seletor').classList.add('escondido')
 }
@@ -1742,6 +1772,13 @@ function avisarAtualizacao(versao) {
   botoes.appendChild(depois)
   caixa.appendChild(botoes)
   $('area-toasts').appendChild(caixa)
+}
+
+// O processo principal avisa quando o som do sistema não pôde ser incluído
+if (window.mydisc.aoSomIndisponivel) {
+  window.mydisc.aoSomIndisponivel(() => {
+    avisar('Não deu para incluir o som do computador — transmitindo só o vídeo.', 'info')
+  })
 }
 
 // Avisinho fixo com o progresso do download da atualização

@@ -14,6 +14,16 @@ contextBridge.exposeInMainWorld('mydisc', {
     ipcRenderer.send('fonte-escolhida', escolha)
   },
 
+  // Pede para repetir a última tela escolhida, agora sem o som do sistema
+  repetirFonteSemSom: () => {
+    ipcRenderer.send('repetir-fonte-sem-som')
+  },
+
+  // Avisa a interface que o som do sistema não pôde ser incluído
+  aoSomIndisponivel: (funcao) => {
+    ipcRenderer.on('som-do-sistema-indisponivel', () => funcao())
+  },
+
   // Avisa a interface quando uma versão nova foi encontrada (download começou)
   aoAtualizacaoBaixando: (funcao) => {
     ipcRenderer.on('atualizacao-baixando', (evento, versao) => funcao(versao))

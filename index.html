@@ -188,8 +188,23 @@
       <label class="opcao-som">
         <input id="opcao-com-som" type="checkbox">
         <span class="caixinha" aria-hidden="true"></span>
-        <span id="texto-opcao-som">Compartilhar também o som do computador</span>
+        <span id="texto-opcao-som">Compartilhar também o som</span>
       </label>
+
+      <div id="opcoes-origem-som" class="origem-som escondido">
+        <label class="campo">
+          <span class="campo-rotulo">De onde vem o som</span>
+          <select id="seletor-origem-som" class="seletor">
+            <option value="app">Só do aplicativo escolhido (recomendado)</option>
+            <option value="sistema">De todo o computador</option>
+            <option value="dispositivo">De um dispositivo de áudio (escolhido nas configurações)</option>
+          </select>
+        </label>
+        <label id="campo-app-som" class="campo escondido">
+          <span class="campo-rotulo">Qual aplicativo?</span>
+          <select id="seletor-app-som" class="seletor"></select>
+        </label>
+      </div>
 
       <div class="modal-botoes">
         <button id="botao-cancelar-fonte" class="botao botao-fantasma">Cancelar</button>
@@ -232,6 +247,11 @@
       <div class="campo">
         <span class="campo-rotulo">Som da transmissão de tela</span>
         <div class="opcoes-resolucao">
+          <label class="opcao-resolucao">
+            <input type="radio" name="som-tela" value="app">
+            <span>Só o aplicativo</span>
+            <small>recomendado: só o jogo/programa</small>
+          </label>
           <label class="opcao-resolucao">
             <input type="radio" name="som-tela" value="sistema">
             <span>Todo o computador</span>

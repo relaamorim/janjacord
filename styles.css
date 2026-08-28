@@ -1339,6 +1339,12 @@ input[type="text"]::placeholder { color: #5a637a; }
 .dica-config strong { color: var(--texto); }
 .dica-config em { color: var(--texto-suave); }
 
+.origem-som {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* ---------- barra de rolagem discreta ---------- */
 ::-webkit-scrollbar { width: 9px; }
 ::-webkit-scrollbar-thumb { background: #2a3049; border-radius: 99px; }

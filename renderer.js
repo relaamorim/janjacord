@@ -58,6 +58,7 @@ const estado = {
   tentativasReconexao: 0,
   reconexaoAgendada: null,
   alarmeEntrada: null,
+  somApp: null,             // captura do som de um aplicativo: { contexto, destino, proximoInicio }
   pararMeuMonitor: null,
   saindo: false,
   chatAberto: false,
@@ -72,7 +73,7 @@ let contextoAudio = null // usado para detectar quem está falando
 const prefMic = () => localStorage.getItem('mydisc-mic') || ''            // '' = padrão do Windows
 const prefSaida = () => localStorage.getItem('mydisc-saida') || ''        // '' = padrão do Windows
 const prefResolucao = () => localStorage.getItem('mydisc-resolucao') || '1080'
-const prefSomTela = () => localStorage.getItem('mydisc-som-tela') || 'sistema' // 'sistema' ou 'dispositivo'
+const prefSomTela = () => localStorage.getItem('mydisc-som-tela') || 'app' // 'app', 'sistema' ou 'dispositivo'
 const prefSomTelaDispositivo = () => localStorage.getItem('mydisc-som-tela-dispositivo') || ''
 
 // Servidores que ajudam os computadores a se acharem (STUN) e, quando a
@@ -1402,6 +1403,12 @@ async function alternarCompartilhamento() {
   }
   querSomDeDispositivo = false
 
+  // Som só do aplicativo escolhido (programa nativo captura e nós colocamos na transmissão)
+  if (pedidoSomApp) {
+    iniciarSomDoApp(stream, pedidoSomApp)
+    pedidoSomApp = null
+  }
+
   try {
     estado.streamTela = stream
 
@@ -1433,6 +1440,56 @@ async function alternarCompartilhamento() {
   } catch (erro) {
     console.log('Erro ao iniciar a transmissão:', erro.name, erro.message)
     avisar('Algo deu errado ao iniciar a transmissão. Tente de novo.', 'erro')
+  }
+}
+
+// ---------- som de um aplicativo específico ----------
+
+// Cria uma "torneira" de áudio na transmissão e pede ao programa nativo o som do aplicativo
+function iniciarSomDoApp(stream, hwnd) {
+  pararSomDoApp()
+  const contexto = new AudioContext({ sampleRate: 48000 })
+  if (contexto.state === 'suspended') contexto.resume()
+  const destino = contexto.createMediaStreamDestination()
+  const trilha = destino.stream.getAudioTracks()[0]
+  stream.addTrack(trilha) // a trilha já vai junto quando ligarmos para os espectadores
+  estado.somApp = { contexto, destino, proximoInicio: 0 }
+  window.mydisc.iniciarSomDoApp({ hwnd })
+}
+
+// Recebe um pedaço de áudio cru (48 kHz, 2 canais, 16 bits) e agenda para tocar na torneira
+function receberSomDoApp(pedaco) {
+  const captura = estado.somApp
+  if (!captura) return
+  const bytes = pedaco instanceof Uint8Array ? pedaco : new Uint8Array(pedaco)
+  const copia = bytes.slice(0, bytes.byteLength - (bytes.byteLength % 4)) // alinha em quadros inteiros
+  const amostras = new Int16Array(copia.buffer)
+  const quadros = amostras.length / 2
+  if (quadros < 1) return
+
+  const buffer = captura.contexto.createBuffer(2, quadros, 48000)
+  const esquerdo = buffer.getChannelData(0)
+  const direito = buffer.getChannelData(1)
+  for (let i = 0; i < quadros; i++) {
+    esquerdo[i] = amostras[2 * i] / 32768
+    direito[i] = amostras[2 * i + 1] / 32768
+  }
+
+  const fonte = captura.contexto.createBufferSource()
+  fonte.buffer = buffer
+  fonte.connect(captura.destino)
+  // Colchão de 60 ms contra soluços da rede/do sistema
+  const agora = captura.contexto.currentTime
+  if (captura.proximoInicio < agora + 0.06) captura.proximoInicio = agora + 0.06
+  fonte.start(captura.proximoInicio)
+  captura.proximoInicio += buffer.duration
+}
+
+function pararSomDoApp() {
+  window.mydisc.pararSomDoApp()
+  if (estado.somApp) {
+    try { estado.somApp.contexto.close() } catch (_) { /* ignora */ }
+    estado.somApp = null
   }
 }
 
@@ -1493,6 +1550,7 @@ function pararMinhaTela() {
 
   estado.streamTela.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
   estado.streamTela = null
+  pararSomDoApp()
 
   for (const [, chamada] of estado.chamadasTela) {
     try { chamada.close() } catch (_) { /* ignora */ }
@@ -1668,15 +1726,50 @@ let fonteSelecionada = null
 let abaAtual = 'tela'
 let ultimoPedidoComSom = false // a última escolha pediu o som do sistema?
 let querSomDeDispositivo = false // a última escolha pediu som de um dispositivo específico?
+let pedidoSomApp = null // número da janela do aplicativo cujo som vai na transmissão
+
+// O identificador de uma janela vem como "window:123456:0" — o número do meio é a janela
+function extrairHwnd(idFonte) {
+  const partes = String(idFonte).split(':')
+  if (partes[0] !== 'window') return null
+  const numero = Number(partes[1])
+  return Number.isFinite(numero) && numero > 0 ? numero : null
+}
+
+// Mostra ou esconde as opções de som conforme a caixinha e a fonte escolhida
+function atualizarOrigemSom() {
+  const querSom = $('opcao-com-som').checked
+  $('opcoes-origem-som').classList.toggle('escondido', !querSom)
+  const origem = $('seletor-origem-som').value
+  const fonte = fontesDisponiveis.find((f) => f.id === fonteSelecionada)
+  // Compartilhando uma tela inteira com "só do aplicativo", é preciso dizer qual
+  const precisaEscolherApp = querSom && origem === 'app' && (!fonte || fonte.tipo !== 'janela')
+  $('campo-app-som').classList.toggle('escondido', !precisaEscolherApp)
+}
 
 window.mydisc.aoAbrirSeletorFonte((fontes) => {
   fontesDisponiveis = fontes
   fonteSelecionada = null
   abaAtual = 'tela'
   $('opcao-com-som').checked = false
-  $('texto-opcao-som').textContent = prefSomTela() === 'dispositivo'
-    ? 'Compartilhar também o som (do dispositivo escolhido nas configurações)'
-    : 'Compartilhar também o som do computador'
+  $('seletor-origem-som').value = prefSomTela()
+
+  // Lista de aplicativos (janelas abertas) para escolher de onde vem o som
+  const seletorApp = $('seletor-app-som')
+  seletorApp.innerHTML = ''
+  const vazio = document.createElement('option')
+  vazio.value = ''
+  vazio.textContent = 'Escolha o aplicativo…'
+  seletorApp.appendChild(vazio)
+  for (const fonte of fontes.filter((f) => f.tipo === 'janela')) {
+    const hwnd = extrairHwnd(fonte.id)
+    if (!hwnd) continue
+    const opcao = document.createElement('option')
+    opcao.value = String(hwnd)
+    opcao.textContent = fonte.nome
+    seletorApp.appendChild(opcao)
+  }
+  atualizarOrigemSom()
   $('botao-confirmar-fonte').disabled = true
   atualizarAbas()
   preencherGradeDeFontes()
@@ -1727,6 +1820,7 @@ function preencherGradeDeFontes() {
     botao.addEventListener('click', () => {
       fonteSelecionada = fonte.id
       $('botao-confirmar-fonte').disabled = false
+      atualizarOrigemSom()
       grade.querySelectorAll('.fonte').forEach((b) => b.classList.remove('selecionada'))
       botao.classList.add('selecionada')
     })
@@ -1743,12 +1837,26 @@ function preencherGradeDeFontes() {
 function confirmarFonte() {
   if (!fonteSelecionada) return
   const querSom = $('opcao-com-som').checked
-  const modoSistema = prefSomTela() === 'sistema'
-  ultimoPedidoComSom = querSom && modoSistema
-  querSomDeDispositivo = querSom && !modoSistema
+  const origem = querSom ? $('seletor-origem-som').value : null
+  const fonte = fontesDisponiveis.find((f) => f.id === fonteSelecionada)
+
+  pedidoSomApp = null
+  if (origem === 'app') {
+    // Janela escolhida: o som vem dela mesma; tela inteira: do aplicativo apontado
+    pedidoSomApp = (fonte && fonte.tipo === 'janela')
+      ? extrairHwnd(fonte.id)
+      : (Number($('seletor-app-som').value) || null)
+    if (!pedidoSomApp) {
+      avisar('Escolha de qual aplicativo vem o som (ou mude para "todo o computador").', 'erro')
+      return
+    }
+  }
+
+  ultimoPedidoComSom = origem === 'sistema'
+  querSomDeDispositivo = origem === 'dispositivo'
   window.mydisc.responderFonte({
     id: fonteSelecionada,
-    comSom: querSom && modoSistema // o som "de todo o computador" é pedido ao Electron
+    comSom: origem === 'sistema' // só o som "de todo o computador" é pedido ao Electron
   })
   $('modal-seletor').classList.add('escondido')
 }
@@ -1756,6 +1864,7 @@ function confirmarFonte() {
 function cancelarFonte() {
   ultimoPedidoComSom = false
   querSomDeDispositivo = false
+  pedidoSomApp = null
   window.mydisc.responderFonte(null)
   $('modal-seletor').classList.add('escondido')
 }
@@ -1915,6 +2024,7 @@ function sairDaSala(motivo, silencioso = false) {
   // Anfitrião avisa todo mundo na hora, sem esperar a conexão cair
   if (estado.souAnfitriao) enviarParaTodos({ tipo: 'encerrando' })
 
+  pararSomDoApp()
   clearInterval(estado.batimento)
   estado.batimento = null
   clearTimeout(estado.reconexaoAgendada)
@@ -2084,6 +2194,13 @@ $('seletor-som-tela').addEventListener('change', () => {
   localStorage.setItem('mydisc-som-tela-dispositivo', $('seletor-som-tela').value)
 })
 
+// Seletor de tela: caixinha de som e origem
+$('opcao-com-som').addEventListener('change', atualizarOrigemSom)
+$('seletor-origem-som').addEventListener('change', () => {
+  localStorage.setItem('mydisc-som-tela', $('seletor-origem-som').value)
+  atualizarOrigemSom()
+})
+
 // Se um aparelho for plugado/desplugado com a janela aberta, atualiza as listas
 navigator.mediaDevices.addEventListener('devicechange', () => {
   if (!$('modal-config').classList.contains('escondido')) preencherListaDeAparelhos()
@@ -2137,6 +2254,18 @@ function avisarAtualizacao(versao) {
   botoes.appendChild(depois)
   caixa.appendChild(botoes)
   $('area-toasts').appendChild(caixa)
+}
+
+// Áudio do aplicativo escolhido chegando do programa nativo
+if (window.mydisc.aoDadosSomApp) {
+  window.mydisc.aoDadosSomApp(receberSomDoApp)
+}
+if (window.mydisc.aoSomAppEncerrado) {
+  window.mydisc.aoSomAppEncerrado((motivo) => {
+    if (estado.somApp && motivo) {
+      avisar('Não consegui capturar o som do aplicativo (' + motivo + ') — transmitindo só o vídeo.', 'info')
+    }
+  })
 }
 
 // O processo principal avisa quando o som do sistema não pôde ser incluído

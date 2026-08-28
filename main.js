@@ -6,6 +6,7 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, shell, dialog, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 const { autoUpdater } = require('electron-updater')
+const { spawn } = require('child_process')
 
 const PAGINA_DE_DOWNLOADS = 'https://github.com/relaamorim/janjacord/releases/latest'
 
@@ -160,7 +161,10 @@ app.whenReady().then(() => {
 })
 
 // Quando o encerramento realmente começar, deixa a janela fechar de verdade
-app.on('before-quit', () => { encerrandoDeVez = true })
+app.on('before-quit', () => {
+  encerrandoDeVez = true
+  pararSomDoApp()
+})
 
 // A interface pediu para reiniciar agora e instalar a atualização baixada
 ipcMain.on('reiniciar-para-atualizar', () => {
@@ -215,6 +219,78 @@ ipcMain.on('fonte-escolhida', (evento, escolha) => {
 ipcMain.on('repetir-fonte-sem-som', () => {
   repetirFonteSemSom = true
 })
+
+// ============================================================
+// SOM DE UM APLICATIVO ESPECÍFICO
+// Um pequeno programa nativo nosso (bin/janjacord-audio.exe) captura só o
+// áudio de um processo do Windows e nos entrega PCM cru; repassamos os
+// pedaços para a interface, que os coloca na transmissão de tela.
+// ============================================================
+
+let processoSomApp = null
+let pedacosSomApp = []
+let relogioSomApp = null
+
+function caminhoDoHelperDeAudio() {
+  // No app instalado o executável fica fora do pacote (asarUnpack), para poder rodar
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'bin', 'janjacord-audio.exe')
+    : path.join(__dirname, 'bin', 'janjacord-audio.exe')
+}
+
+function enviarPedacosDeSom() {
+  if (!pedacosSomApp.length || !janela || janela.isDestroyed()) { pedacosSomApp = []; return }
+  const junto = Buffer.concat(pedacosSomApp)
+  pedacosSomApp = []
+  janela.webContents.send('som-app-dados', junto)
+}
+
+function pararSomDoApp() {
+  clearInterval(relogioSomApp)
+  relogioSomApp = null
+  pedacosSomApp = []
+  if (processoSomApp) {
+    const filho = processoSomApp
+    processoSomApp = null
+    try { filho.kill() } catch (_) { /* já encerrou */ }
+  }
+}
+
+ipcMain.on('som-app-iniciar', (evento, alvo) => {
+  pararSomDoApp()
+  const argumentos = alvo && alvo.hwnd ? ['--hwnd', String(alvo.hwnd)] : ['--pid', String(alvo && alvo.pid)]
+
+  let filho
+  try {
+    filho = spawn(caminhoDoHelperDeAudio(), argumentos, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (erro) {
+    if (janela && !janela.isDestroyed()) janela.webContents.send('som-app-encerrado', erro.message)
+    return
+  }
+  processoSomApp = filho
+
+  // Junta os pedacinhos de áudio e manda para a interface a cada 40 ms
+  relogioSomApp = setInterval(enviarPedacosDeSom, 40)
+
+  filho.stdout.on('data', (pedaco) => {
+    if (processoSomApp === filho) pedacosSomApp.push(pedaco)
+  })
+  filho.stderr.on('data', (texto) => console.log('[som-app]', String(texto).trim()))
+  filho.on('error', (erro) => {
+    if (processoSomApp !== filho) return
+    pararSomDoApp()
+    if (janela && !janela.isDestroyed()) janela.webContents.send('som-app-encerrado', erro.message)
+  })
+  filho.on('exit', (codigo) => {
+    if (processoSomApp !== filho) return
+    pararSomDoApp()
+    if (janela && !janela.isDestroyed()) {
+      janela.webContents.send('som-app-encerrado', codigo === 0 ? null : 'código ' + codigo)
+    }
+  })
+})
+
+ipcMain.on('som-app-parar', () => pararSomDoApp())
 
 // ============================================================
 // ATUALIZAÇÃO AUTOMÁTICA

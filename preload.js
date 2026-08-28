@@ -24,6 +24,20 @@ contextBridge.exposeInMainWorld('mydisc', {
     ipcRenderer.on('som-do-sistema-indisponivel', () => funcao())
   },
 
+  // Som de um aplicativo específico (programa nativo bin/janjacord-audio.exe)
+  iniciarSomDoApp: (alvo) => {
+    ipcRenderer.send('som-app-iniciar', alvo)
+  },
+  pararSomDoApp: () => {
+    ipcRenderer.send('som-app-parar')
+  },
+  aoDadosSomApp: (funcao) => {
+    ipcRenderer.on('som-app-dados', (evento, pedaco) => funcao(pedaco))
+  },
+  aoSomAppEncerrado: (funcao) => {
+    ipcRenderer.on('som-app-encerrado', (evento, motivo) => funcao(motivo))
+  },
+
   // Avisa a interface quando uma versão nova foi encontrada (download começou)
   aoAtualizacaoBaixando: (funcao) => {
     ipcRenderer.on('atualizacao-baixando', (evento, versao) => funcao(versao))

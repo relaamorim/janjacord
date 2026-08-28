@@ -275,7 +275,16 @@ ipcMain.on('som-app-iniciar', (evento, alvo) => {
   filho.stdout.on('data', (pedaco) => {
     if (processoSomApp === filho) pedacosSomApp.push(pedaco)
   })
-  filho.stderr.on('data', (texto) => console.log('[som-app]', String(texto).trim()))
+  filho.stderr.on('data', (texto) => {
+    for (const linha of String(texto).split(/\r?\n/)) {
+      if (!linha.trim()) continue
+      console.log('[som-app]', linha.trim())
+      // Linhas "AVISO: ..." viram um avisinho na interface
+      if (linha.startsWith('AVISO:') && processoSomApp === filho && janela && !janela.isDestroyed()) {
+        janela.webContents.send('som-app-aviso', linha.slice(6).trim())
+      }
+    }
+  })
   filho.on('error', (erro) => {
     if (processoSomApp !== filho) return
     pararSomDoApp()

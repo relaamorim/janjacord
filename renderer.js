@@ -1446,6 +1446,47 @@ async function alternarCompartilhamento() {
 // ---------- som de um aplicativo específico ----------
 
 // Cria uma "torneira" de áudio na transmissão e pede ao programa nativo o som do aplicativo
+// Processador que roda na thread de áudio: recebe pedaços de PCM 16 bits (48 kHz, estéreo)
+// e os toca em sequência, sem depender de agendamento por relógio. Isso importa porque,
+// quando a janela do JanjaCord está coberta pelo jogo, o Chromium desacelera os
+// temporizadores da página — o agendamento antigo (BufferSource) ficava mudo nessa situação.
+const CODIGO_FILA_PCM = `
+class FilaPcm extends AudioWorkletProcessor {
+  constructor() {
+    super()
+    this.fila = []              // pedaços Int16Array intercalados (E, D, E, D...)
+    this.posicao = 0            // posição de leitura no primeiro pedaço
+    this.guardados = 0          // quadros à espera
+    this.limite = 48000 * 0.5   // no máximo meio segundo na fila, senão o atraso só cresce
+    this.port.onmessage = (ev) => {
+      const amostras = new Int16Array(ev.data)
+      this.fila.push(amostras)
+      this.guardados += amostras.length / 2
+      while (this.guardados > this.limite && this.fila.length > 1) {
+        const velho = this.fila.shift()
+        this.guardados -= (velho.length - this.posicao) / 2
+        this.posicao = 0
+      }
+    }
+  }
+  process(entradas, saidas) {
+    const esq = saidas[0][0]
+    const dir = saidas[0][1] || esq
+    for (let i = 0; i < esq.length; i++) {
+      if (!this.fila.length) { esq[i] = 0; dir[i] = 0; continue }
+      const atual = this.fila[0]
+      esq[i] = atual[this.posicao] / 32768
+      dir[i] = atual[this.posicao + 1] / 32768
+      this.posicao += 2
+      this.guardados--
+      if (this.posicao >= atual.length) { this.fila.shift(); this.posicao = 0 }
+    }
+    return true
+  }
+}
+registerProcessor('fila-pcm', FilaPcm)
+`
+
 function iniciarSomDoApp(stream, hwnd) {
   pararSomDoApp()
   const contexto = new AudioContext({ sampleRate: 48000 })
@@ -1453,36 +1494,39 @@ function iniciarSomDoApp(stream, hwnd) {
   const destino = contexto.createMediaStreamDestination()
   const trilha = destino.stream.getAudioTracks()[0]
   stream.addTrack(trilha) // a trilha já vai junto quando ligarmos para os espectadores
-  estado.somApp = { contexto, destino, proximoInicio: 0 }
+  const captura = { contexto, destino, no: null, pendentes: [] }
+  estado.somApp = captura
+
+  // O processador é carregado a partir de um arquivo em memória (Blob)
+  const url = URL.createObjectURL(new Blob([CODIGO_FILA_PCM], { type: 'application/javascript' }))
+  contexto.audioWorklet.addModule(url).then(() => {
+    URL.revokeObjectURL(url)
+    if (estado.somApp !== captura) return // já parou nesse meio-tempo
+    captura.no = new AudioWorkletNode(contexto, 'fila-pcm', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] })
+    captura.no.connect(destino)
+    // Entrega o que chegou enquanto o processador carregava
+    for (const pedaco of captura.pendentes) captura.no.port.postMessage(pedaco, [pedaco])
+    captura.pendentes = []
+  }).catch((erro) => {
+    console.log('Falha ao preparar o processador de som do aplicativo:', erro.message)
+    if (estado.somApp === captura) {
+      avisar('Não consegui preparar o som do aplicativo — transmitindo só o vídeo.', 'info')
+      pararSomDoApp()
+    }
+  })
+
   window.mydisc.iniciarSomDoApp({ hwnd })
 }
 
-// Recebe um pedaço de áudio cru (48 kHz, 2 canais, 16 bits) e agenda para tocar na torneira
+// Recebe um pedaço de áudio cru (48 kHz, 2 canais, 16 bits) e passa para o processador
 function receberSomDoApp(pedaco) {
   const captura = estado.somApp
   if (!captura) return
   const bytes = pedaco instanceof Uint8Array ? pedaco : new Uint8Array(pedaco)
   const copia = bytes.slice(0, bytes.byteLength - (bytes.byteLength % 4)) // alinha em quadros inteiros
-  const amostras = new Int16Array(copia.buffer)
-  const quadros = amostras.length / 2
-  if (quadros < 1) return
-
-  const buffer = captura.contexto.createBuffer(2, quadros, 48000)
-  const esquerdo = buffer.getChannelData(0)
-  const direito = buffer.getChannelData(1)
-  for (let i = 0; i < quadros; i++) {
-    esquerdo[i] = amostras[2 * i] / 32768
-    direito[i] = amostras[2 * i + 1] / 32768
-  }
-
-  const fonte = captura.contexto.createBufferSource()
-  fonte.buffer = buffer
-  fonte.connect(captura.destino)
-  // Colchão de 60 ms contra soluços da rede/do sistema
-  const agora = captura.contexto.currentTime
-  if (captura.proximoInicio < agora + 0.06) captura.proximoInicio = agora + 0.06
-  fonte.start(captura.proximoInicio)
-  captura.proximoInicio += buffer.duration
+  if (!copia.byteLength) return
+  if (captura.no) captura.no.port.postMessage(copia.buffer, [copia.buffer])
+  else if (captura.pendentes.length < 50) captura.pendentes.push(copia.buffer) // ~2 s no máximo
 }
 
 function pararSomDoApp() {
@@ -2265,6 +2309,12 @@ if (window.mydisc.aoSomAppEncerrado) {
     if (estado.somApp && motivo) {
       avisar('Não consegui capturar o som do aplicativo (' + motivo + ') — transmitindo só o vídeo.', 'info')
     }
+  })
+}
+// Avisos do programa nativo (ex.: aplicativo mudo no Mixer do Windows)
+if (window.mydisc.aoSomAppAviso) {
+  window.mydisc.aoSomAppAviso((texto) => {
+    if (estado.somApp) avisar('Som do aplicativo: ' + texto, 'info')
   })
 }
 

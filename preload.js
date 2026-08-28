@@ -37,6 +37,9 @@ contextBridge.exposeInMainWorld('mydisc', {
   aoSomAppEncerrado: (funcao) => {
     ipcRenderer.on('som-app-encerrado', (evento, motivo) => funcao(motivo))
   },
+  aoSomAppAviso: (funcao) => {
+    ipcRenderer.on('som-app-aviso', (evento, texto) => funcao(texto))
+  },
 
   // Avisa a interface quando uma versão nova foi encontrada (download começou)
   aoAtualizacaoBaixando: (funcao) => {

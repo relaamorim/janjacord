@@ -83,7 +83,7 @@ As versões ficam publicadas em: https://github.com/relaamorim/janjacord/release
 3. Rode:
 
 ```
-$env:GH_TOKEN = (gh auth token)
+$env:GH_TOKEN = (gh auth token --user relaamorim)
 npm run publicar
 ```
 

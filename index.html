@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https: wss: ws:;">
+        content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https: wss: ws:;">
   <title>JanjaCord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -227,6 +227,16 @@
       <label class="campo">
         <span class="campo-rotulo">Microfone (entrada de som)</span>
         <select id="seletor-mic" class="seletor"></select>
+      </label>
+
+      <!-- Filtro que deixa passar a voz e corta teclado, ventilador etc. -->
+      <label class="opcao-som opcao-isolamento">
+        <input id="opcao-isolamento" type="checkbox">
+        <span class="caixinha" aria-hidden="true"></span>
+        <span>
+          <strong>Isolamento de voz</strong>
+          <small>corta teclado, ventilador e outros ruídos de fundo do seu microfone</small>
+        </span>
       </label>
 
       <label class="campo">

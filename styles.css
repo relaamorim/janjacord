@@ -1056,6 +1056,12 @@ input[type="text"]::placeholder { color: #5a637a; }
 }
 .opcao-som input { display: none; }
 
+/* Interruptor do isolamento de voz, nas configurações: título + explicação */
+.opcao-isolamento { align-items: flex-start; }
+.opcao-isolamento .caixinha { flex-shrink: 0; margin-top: 2px; }
+.opcao-isolamento strong { display: block; color: var(--texto); font-weight: 600; }
+.opcao-isolamento small { display: block; font-size: 14px; }
+
 .caixinha {
   width: 20px;
   height: 20px;

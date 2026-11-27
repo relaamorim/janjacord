@@ -87,6 +87,7 @@ const prefSaida = () => localStorage.getItem('mydisc-saida') || ''        // '' 
 const prefResolucao = () => localStorage.getItem('mydisc-resolucao') || '1080'
 const prefSomTela = () => localStorage.getItem('mydisc-som-tela') || 'app' // 'app', 'sistema' ou 'dispositivo'
 const prefSomTelaDispositivo = () => localStorage.getItem('mydisc-som-tela-dispositivo') || ''
+const prefIsolamento = () => localStorage.getItem('mydisc-isolamento') !== '0' // isolamento de voz: ligado por padrão
 const prefUltimaSala = () => localStorage.getItem('mydisc-ultima-sala') || '' // código da última sala em que estive
 
 // Guarda a sala atual como "minha sala", para voltar nela com um clique
@@ -389,19 +390,22 @@ function restricoesDeMicrofone() {
 // (assim a conexão de voz funciona mesmo sem microfone — só para ouvir)
 async function obterMicrofone() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(restricoesDeMicrofone())
+    const bruto = await navigator.mediaDevices.getUserMedia(restricoesDeMicrofone())
     estado.micEhSilencioso = false
-    vigiarMicrofone(stream)
+    const stream = await comIsolamentoDeVoz(bruto)
+    vigiarMicrofone(bruto, stream)
     return stream
   } catch (primeiroErro) {
     // O microfone escolhido pode ter sido desconectado — tenta o padrão
     if (prefMic()) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const bruto = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
         estado.micEhSilencioso = false
         avisar('O microfone escolhido não foi encontrado — usando o padrão do Windows.', 'info')
+        const stream = await comIsolamentoDeVoz(bruto)
+        vigiarMicrofone(bruto, stream)
         return stream
       } catch (_) { /* segue para o plano C logo abaixo */ }
     }
@@ -409,9 +413,62 @@ async function obterMicrofone() {
   }
 }
 
-// Se o microfone for desplugado (ou o PC dormir), pega outro automaticamente
-function vigiarMicrofone(stream) {
-  const trilha = stream.getAudioTracks()[0]
+// ISOLAMENTO DE VOZ: passa o microfone por um filtro que deixa a voz e corta
+// teclado, ventilador e outros ruídos (o filtro fica em audio/isolamento-voz.js).
+// Devolve o som já limpo; é ele que vai para as outras pessoas. Se o filtro não
+// puder ser usado por qualquer motivo, devolve o microfone como veio.
+async function comIsolamentoDeVoz(bruto) {
+  if (!prefIsolamento()) return bruto
+
+  let contexto = null
+  try {
+    // O filtro trabalha a 48 kHz; o Chromium converte o microfone se for preciso
+    contexto = new AudioContext({ sampleRate: 48000 })
+    await contexto.audioWorklet.addModule('audio/isolamento-voz.js')
+    if (contexto.state === 'suspended') await contexto.resume()
+
+    const origem = contexto.createMediaStreamSource(bruto)
+    const filtro = new AudioWorkletNode(contexto, 'isolamento-voz', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: 1, channelCountMode: 'explicit'
+    })
+    const destino = contexto.createMediaStreamDestination()
+    origem.connect(filtro)
+    filtro.connect(destino)
+
+    // Se o filtro quebrar no meio do caminho, liga o microfone direto: a
+    // pessoa continua sendo ouvida (só sem a limpeza)
+    filtro.onprocessorerror = () => {
+      console.log('O filtro de isolamento de voz parou — usando o microfone sem filtro')
+      try { origem.disconnect() } catch (_) { /* ignora */ }
+      try { origem.connect(destino) } catch (_) { /* ignora */ }
+    }
+
+    const limpo = destino.stream
+    // Para soltar o microfone de verdade é preciso parar também a captura original
+    limpo.soltarOrigem = () => {
+      bruto.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+      try { contexto.close() } catch (_) { /* ignora */ }
+    }
+    return limpo
+  } catch (erro) {
+    console.log('Isolamento de voz indisponível:', erro.name, erro.message)
+    try { if (contexto) contexto.close() } catch (_) { /* ignora */ }
+    return bruto
+  }
+}
+
+// Desliga um microfone por completo (o som limpo E a captura original)
+function soltarMicrofone(stream) {
+  if (!stream) return
+  stream.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+  if (stream.soltarOrigem) stream.soltarOrigem()
+}
+
+// Se o microfone for desplugado (ou o PC dormir), pega outro automaticamente.
+// "bruto" é a captura original (é ela que avisa o fim); "stream" é o que está em uso.
+function vigiarMicrofone(bruto, stream) {
+  const trilha = bruto.getAudioTracks()[0]
   if (!trilha) return
   trilha.addEventListener('ended', () => {
     if (estado.saindo || !estado.peer || estado.streamMic !== stream) return
@@ -704,7 +761,7 @@ async function abrirSala(peer, nova) {
   const microfone = await obterMicrofone()
   if (geracao !== estado.geracao) {
     // Saí da sala antes de o microfone ficar pronto
-    microfone.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+    soltarMicrofone(microfone)
     return
   }
   estado.streamMic = microfone
@@ -1037,7 +1094,7 @@ function entrarComoConvidado() {
     // Pega o microfone ANTES de ligar para os outros
     const microfone = await obterMicrofone()
     if (geracao !== estado.geracao || estado.peer !== peer) {
-      microfone.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+      soltarMicrofone(microfone)
       return
     }
     estado.streamMic = microfone
@@ -1067,7 +1124,7 @@ function recomecarEntrada() {
   estado.conexaoAnfitriao = null
   try { if (peer) peer.destroy() } catch (_) { /* ignora */ }
   if (estado.streamMic) {
-    estado.streamMic.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+    soltarMicrofone(estado.streamMic)
     estado.streamMic = null
   }
 
@@ -1862,48 +1919,10 @@ async function alternarCompartilhamento() {
 
 // ---------- som de um aplicativo específico ----------
 
-// Cria uma "torneira" de áudio na transmissão e pede ao programa nativo o som do aplicativo
-// Processador que roda na thread de áudio: recebe pedaços de PCM 16 bits (48 kHz, estéreo)
-// e os toca em sequência, sem depender de agendamento por relógio. Isso importa porque,
-// quando a janela do JanjaCord está coberta pelo jogo, o Chromium desacelera os
-// temporizadores da página — o agendamento antigo (BufferSource) ficava mudo nessa situação.
-const CODIGO_FILA_PCM = `
-class FilaPcm extends AudioWorkletProcessor {
-  constructor() {
-    super()
-    this.fila = []              // pedaços Int16Array intercalados (E, D, E, D...)
-    this.posicao = 0            // posição de leitura no primeiro pedaço
-    this.guardados = 0          // quadros à espera
-    this.limite = 48000 * 0.5   // no máximo meio segundo na fila, senão o atraso só cresce
-    this.port.onmessage = (ev) => {
-      const amostras = new Int16Array(ev.data)
-      this.fila.push(amostras)
-      this.guardados += amostras.length / 2
-      while (this.guardados > this.limite && this.fila.length > 1) {
-        const velho = this.fila.shift()
-        this.guardados -= (velho.length - this.posicao) / 2
-        this.posicao = 0
-      }
-    }
-  }
-  process(entradas, saidas) {
-    const esq = saidas[0][0]
-    const dir = saidas[0][1] || esq
-    for (let i = 0; i < esq.length; i++) {
-      if (!this.fila.length) { esq[i] = 0; dir[i] = 0; continue }
-      const atual = this.fila[0]
-      esq[i] = atual[this.posicao] / 32768
-      dir[i] = atual[this.posicao + 1] / 32768
-      this.posicao += 2
-      this.guardados--
-      if (this.posicao >= atual.length) { this.fila.shift(); this.posicao = 0 }
-    }
-    return true
-  }
-}
-registerProcessor('fila-pcm', FilaPcm)
-`
-
+// Cria uma "torneira" de áudio na transmissão e pede ao programa nativo o som do
+// aplicativo. Os pedaços de som são tocados pelo processador "fila-pcm", que fica
+// em audio/fila-pcm.js (precisa ser um arquivo: a regra de segurança da página
+// não deixa carregar código montado na memória).
 function iniciarSomDoApp(stream, hwnd) {
   pararSomDoApp()
   const contexto = new AudioContext({ sampleRate: 48000 })
@@ -1914,10 +1933,7 @@ function iniciarSomDoApp(stream, hwnd) {
   const captura = { contexto, destino, no: null, pendentes: [] }
   estado.somApp = captura
 
-  // O processador é carregado a partir de um arquivo em memória (Blob)
-  const url = URL.createObjectURL(new Blob([CODIGO_FILA_PCM], { type: 'application/javascript' }))
-  contexto.audioWorklet.addModule(url).then(() => {
-    URL.revokeObjectURL(url)
+  contexto.audioWorklet.addModule('audio/fila-pcm.js').then(() => {
     if (estado.somApp !== captura) return // já parou nesse meio-tempo
     captura.no = new AudioWorkletNode(contexto, 'fila-pcm', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] })
     captura.no.connect(destino)
@@ -2351,6 +2367,7 @@ async function abrirConfiguracoes() {
     radio.checked = radio.value === prefSomTela()
   })
   atualizarVisibilidadeSomTela()
+  $('opcao-isolamento').checked = prefIsolamento()
 
   await preencherListaDeAparelhos()
 }
@@ -2411,7 +2428,7 @@ function montarSeletor(seletor, aparelhos, escolhido, apelido) {
 
 // Troca o microfone NO MEIO da chamada, sem derrubar ninguém:
 // substitui a trilha de áudio dentro de cada conexão já aberta
-async function aplicarNovoMicrofone() {
+async function aplicarNovoMicrofone(mensagem = 'Microfone trocado!') {
   if (!estado.peer) return // fora da sala, a escolha vale na próxima entrada
 
   try {
@@ -2427,11 +2444,11 @@ async function aplicarNovoMicrofone() {
     }
 
     if (estado.streamMic) {
-      estado.streamMic.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+      soltarMicrofone(estado.streamMic)
     }
     estado.streamMic = novoStream
     ligarMeuDetectorDeFala()
-    if (!estado.micEhSilencioso) avisar('Microfone trocado!')
+    if (!estado.micEhSilencioso) avisar(mensagem)
   } catch (_) {
     avisar('Não consegui usar esse microfone. Confira se ele está conectado.', 'erro')
   }
@@ -2512,7 +2529,7 @@ function sairDaSala(motivo, silencioso = false) {
     estado.streamTela = null
   }
   if (estado.streamMic) {
-    estado.streamMic.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+    soltarMicrofone(estado.streamMic)
     estado.streamMic = null
   }
 
@@ -2651,6 +2668,13 @@ $('botao-fechar-config').addEventListener('click', fecharConfiguracoes)
 $('seletor-mic').addEventListener('change', () => {
   localStorage.setItem('mydisc-mic', $('seletor-mic').value)
   aplicarNovoMicrofone()
+})
+
+// Liga/desliga o isolamento de voz (vale na hora, mesmo no meio da chamada)
+$('opcao-isolamento').addEventListener('change', () => {
+  const ligado = $('opcao-isolamento').checked
+  localStorage.setItem('mydisc-isolamento', ligado ? '1' : '0')
+  if (estado.peer) aplicarNovoMicrofone(ligado ? 'Isolamento de voz ligado.' : 'Isolamento de voz desligado.')
 })
 
 $('seletor-saida').addEventListener('change', () => {

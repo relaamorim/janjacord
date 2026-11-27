@@ -4,13 +4,15 @@
 >
 > *"A alternativa open source ao Discord que ninguém pediu."*
 
-![Arte de divulgação do JanjaCord: salas de voz com tela em Full HD, canais de voz e chat](banner.png)
+![Arte de divulgação do JanjaCord: salas de voz com tela em Full HD, canais de voz e chat](docs/banner.png)
 
 Aplicativo para Windows: salas de voz com **compartilhamento de tela em Full HD (1080p)**, **canais de voz**, **chat de texto** e até **duas transmissões simultâneas** — para até **10 pessoas**, conectadas pela internet, **sem conta, sem cadastro e sem servidor pago**. Gratuito e de código aberto.
 
-### [⬇️ Baixar a última versão](https://github.com/relaamorim/janjacord/releases/latest)
+### [⬇️ Baixar o JanjaCord](https://relaamorim.github.io/janjacord/)
 
-Baixe o **`JanjaCord Setup <versão>.exe`** (instalador com atualização automática) ou o **`JanjaCord <versão>.exe`** (portátil, sem instalar).
+**Link para mandar para as pessoas:** https://relaamorim.github.io/janjacord/ — uma página com um botão grande de download e o passo a passo da instalação.
+
+Prefere o arquivo direto? [Clique aqui para baixar o instalador](https://github.com/relaamorim/janjacord/releases/latest/download/JanjaCord-Setup.exe) (sempre a versão mais nova, com atualização automática). A versão **portátil** (sem instalar) fica na página de [Releases](https://github.com/relaamorim/janjacord/releases/latest).
 
 ## ⚠️ Atenção: o Windows mostra um aviso na instalação
 
@@ -18,7 +20,7 @@ O Janjord ainda **não tem assinatura digital** — esse certificado custa caro 
 
 **Passo a passo para continuar a instalação:**
 
-1. Baixe o instalador na página de [Releases](https://github.com/relaamorim/janjacord/releases/latest) e execute.
+1. Baixe o instalador pela [página de download](https://relaamorim.github.io/janjacord/) e execute.
 2. Se aparecer a janela azul **"O Windows protegeu o computador"**, clique em **"Mais informações"**.
 3. Vai surgir o botão **"Executar assim mesmo"** — clique nele.
 4. Pronto! A instalação segue normalmente, cria o atalho e abre o aplicativo.
@@ -68,7 +70,7 @@ npm run build
 
 Os arquivos aparecem na pasta `dist`:
 
-- `JanjaCord Setup <versão>.exe` — instalador (instala e cria atalho)
+- `JanjaCord-Setup.exe` — instalador (instala e cria atalho). O nome é fixo, sem número de versão, de propósito: é isso que mantém o link direto de download funcionando a cada versão nova.
 - `JanjaCord <versão>.exe` — versão portátil (basta dar dois cliques, sem instalar)
 
 ## Atualização automática 🔄
@@ -90,7 +92,7 @@ $env:GH_TOKEN = (gh auth token --user relaamorim)
 npm run publicar
 ```
 
-Pronto: a versão sobe para o GitHub e todos os usuários recebem automaticamente.
+Pronto: a versão sobe para o GitHub e todos os usuários recebem automaticamente. A [página de download](https://relaamorim.github.io/janjacord/) (pasta `docs/`) passa a entregar a versão nova sozinha, sem precisar mexer em nada.
 
 ## Como funciona por dentro (resumo)
 

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baixar o JanjaCord</title>
+  <meta name="description" content="Salas de voz com tela em Full HD para até 10 pessoas. Grátis, sem conta e sem cadastro. Baixe para Windows com um clique.">
+
+  <!-- Prévia que aparece quando o link é colado no WhatsApp, Telegram etc. -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Baixar o JanjaCord">
+  <meta property="og:description" content="Salas de voz com tela em Full HD para até 10 pessoas. Grátis, sem conta e sem cadastro.">
+  <meta property="og:image" content="https://relaamorim.github.io/janjacord/banner.png">
+  <meta property="og:url" content="https://relaamorim.github.io/janjacord/">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" type="image/png" href="icone-256.png">
+
+  <!-- Mesmas fontes usadas dentro do aplicativo -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================
+       Página de download do JanjaCord
+       Mesmas cores do aplicativo: fundo escuro, menta e coral
+       ============================================================ */
+    :root {
+      --fundo: #0b0d14;
+      --painel: #12151f;
+      --painel-claro: #181c2a;
+      --borda: rgba(255, 255, 255, 0.09);
+      --texto: #e9ebf4;
+      --texto-suave: #a3abc0;
+      --menta: #3cf2b3;
+      --coral: #ff5c7a;
+      --azul: #5cc8ff;
+      --ambar: #ffc24b;
+      --fonte-titulo: "Sora", "Segoe UI", system-ui, sans-serif;
+      --fonte-corpo: "Rubik", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--fundo);
+      color: var(--texto);
+      font-family: var(--fonte-corpo);
+      font-size: 17px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Manchas de cor ao fundo, como na tela inicial do aplicativo */
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      width: 620px;
+      height: 620px;
+      border-radius: 50%;
+      filter: blur(130px);
+      opacity: 0.2;
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::before { background: var(--menta); top: -260px; left: -200px; }
+    body::after { background: var(--coral); bottom: -320px; right: -220px; opacity: 0.14; }
+
+    .pagina {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px 20px 56px;
+    }
+
+    /* ---------- marca no topo ---------- */
+    .marca {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--fonte-titulo);
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: -0.02em;
+    }
+    .marca .anel {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 5px solid var(--menta);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .marca .anel::after {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--menta);
+    }
+    .marca b { color: var(--menta); font-weight: 800; }
+
+    /* ---------- bloco principal: título + botão ---------- */
+    .principal {
+      text-align: center;
+      padding: 56px 0 40px;
+    }
+
+    h1 {
+      font-family: var(--fonte-titulo);
+      font-weight: 800;
+      font-size: clamp(34px, 7vw, 54px);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+    h1 em { font-style: normal; color: var(--menta); }
+
+    .chamada {
+      margin: 18px auto 0;
+      max-width: 520px;
+      color: var(--texto-suave);
+      font-size: 18px;
+    }
+    .chamada strong { color: var(--texto); font-weight: 600; }
+
+    /* O botão: grande, verde, impossível de errar */
+    .botao-baixar {
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 34px;
+      padding: 22px 38px;
+      border-radius: 20px;
+      background: var(--menta);
+      color: #04231a;
+      font-family: var(--fonte-titulo);
+      font-weight: 800;
+      font-size: clamp(20px, 4.4vw, 26px);
+      text-decoration: none;
+      box-shadow: 0 0 0 0 rgba(60, 242, 179, 0.5), 0 18px 44px rgba(60, 242, 179, 0.28);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      animation: pulsar 2.4s ease-out infinite;
+    }
+    .botao-baixar:hover { transform: translateY(-3px) scale(1.02); }
+    .botao-baixar:active { transform: translateY(0) scale(0.99); }
+    .botao-baixar:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+    .botao-baixar svg { width: 30px; height: 30px; flex-shrink: 0; }
+
+    @keyframes pulsar {
+      0% { box-shadow: 0 0 0 0 rgba(60, 242, 179, 0.5), 0 18px 44px rgba(60, 242, 179, 0.28); }
+      70% { box-shadow: 0 0 0 22px rgba(60, 242, 179, 0), 0 18px 44px rgba(60, 242, 179, 0.28); }
+      100% { box-shadow: 0 0 0 0 rgba(60, 242, 179, 0), 0 18px 44px rgba(60, 242, 179, 0.28); }
+    }
+
+    .detalhes-arquivo {
+      margin-top: 16px;
+      color: var(--texto-suave);
+      font-size: 15px;
+    }
+
+    /* Selos: grátis, sem conta... */
+    .selos {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 26px;
+      list-style: none;
+    }
+    .selos li {
+      padding: 7px 15px;
+      border-radius: 999px;
+      border: 1px solid var(--borda);
+      background: var(--painel);
+      font-size: 15px;
+      font-weight: 500;
+    }
+    .selos li::before { content: "✓ "; color: var(--menta); font-weight: 700; }
+
+    /* Avisos que aparecem conforme a situação */
+    .aviso {
+      display: none;
+      margin: 26px auto 0;
+      max-width: 560px;
+      padding: 16px 20px;
+      border-radius: 14px;
+      text-align: left;
+      font-size: 16px;
+    }
+    .aviso.visivel { display: block; }
+    .aviso-comecou {
+      background: rgba(60, 242, 179, 0.1);
+      border: 1px solid rgba(60, 242, 179, 0.45);
+    }
+    .aviso-comecou strong { color: var(--menta); }
+    .aviso-celular {
+      background: rgba(255, 194, 75, 0.1);
+      border: 1px solid rgba(255, 194, 75, 0.5);
+    }
+    .aviso-celular strong { color: var(--ambar); }
+    .botao-copiar {
+      margin-top: 12px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: 0;
+      background: var(--ambar);
+      color: #2b1d00;
+      font-family: var(--fonte-corpo);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* ---------- passo a passo ---------- */
+    h2 {
+      font-family: var(--fonte-titulo);
+      font-weight: 700;
+      font-size: clamp(24px, 5vw, 30px);
+      letter-spacing: -0.02em;
+      text-align: center;
+      margin: 44px 0 8px;
+    }
+    .subtitulo {
+      text-align: center;
+      color: var(--texto-suave);
+      margin-bottom: 24px;
+    }
+
+    .passos { list-style: none; display: grid; gap: 16px; }
+
+    .passo {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 18px;
+      padding: 24px;
+      border-radius: 18px;
+      background: var(--painel);
+      border: 1px solid var(--borda);
+    }
+    .passo .numero {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--menta);
+      color: #04231a;
+      font-family: var(--fonte-titulo);
+      font-weight: 800;
+      font-size: 24px;
+    }
+    .passo h3 {
+      font-family: var(--fonte-titulo);
+      font-weight: 700;
+      font-size: 20px;
+      line-height: 1.3;
+      margin-bottom: 6px;
+    }
+    .passo p { color: var(--texto-suave); }
+    .passo p + p { margin-top: 10px; }
+    .passo p strong { color: var(--texto); font-weight: 600; }
+
+    .nome-arquivo {
+      display: inline-block;
+      padding: 1px 9px;
+      border-radius: 7px;
+      background: var(--painel-claro);
+      border: 1px solid var(--borda);
+      color: var(--azul);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .dica {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: var(--painel-claro);
+      border-left: 4px solid var(--ambar);
+      font-size: 15px;
+      color: var(--texto-suave);
+    }
+    .dica strong { color: var(--texto); }
+
+    /* Desenho da tela azul do Windows, para a pessoa reconhecer quando aparecer */
+    .janela-windows {
+      margin-top: 16px;
+      padding: 22px 22px 18px;
+      background: #0a5fb4;
+      color: #fff;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      border-radius: 4px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+    }
+    .janela-windows .titulo-janela { font-size: 21px; font-weight: 400; line-height: 1.25; margin-bottom: 10px; }
+    .janela-windows .texto-janela { font-size: 14px; line-height: 1.45; opacity: 0.95; }
+    .janela-windows .linha {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .janela-windows .link-janela {
+      font-size: 15px;
+      text-decoration: underline;
+      padding: 3px 7px;
+      border-radius: 4px;
+      outline: 3px solid var(--ambar);
+      outline-offset: 2px;
+    }
+    .janela-windows .botoes-janela { justify-content: flex-end; margin-top: 22px; }
+    .janela-windows .botao-janela {
+      padding: 6px 18px;
+      border: 2px solid #fff;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .janela-windows .botao-janela.destaque { outline: 3px solid var(--ambar); outline-offset: 3px; }
+    .etiqueta {
+      display: inline-block;
+      padding: 3px 11px;
+      border-radius: 999px;
+      background: var(--ambar);
+      color: #2b1d00;
+      font-family: var(--fonte-corpo);
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* ---------- por que aparece o aviso ---------- */
+    .explicacao {
+      margin-top: 16px;
+      padding: 22px 24px;
+      border-radius: 18px;
+      border: 1px dashed rgba(92, 200, 255, 0.4);
+      background: rgba(92, 200, 255, 0.06);
+    }
+    .explicacao h3 {
+      font-family: var(--fonte-titulo);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--azul);
+      margin-bottom: 6px;
+    }
+    .explicacao p { color: var(--texto-suave); font-size: 16px; }
+
+    /* ---------- rodapé ---------- */
+    footer {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--borda);
+      text-align: center;
+      color: var(--texto-suave);
+      font-size: 15px;
+    }
+    footer a { color: var(--menta); }
+    footer p + p { margin-top: 6px; }
+
+    /* ---------- celular ---------- */
+    @media (max-width: 560px) {
+      body { font-size: 16px; }
+      .principal { padding: 40px 0 28px; }
+      .botao-baixar { padding: 20px 26px; width: 100%; justify-content: center; }
+      .passo { grid-template-columns: 1fr; gap: 12px; padding: 20px; }
+      .passo .numero { width: 44px; height: 44px; font-size: 20px; }
+    }
+
+    /* Respeita quem desativou animações no sistema */
+    @media (prefers-reduced-motion: reduce) {
+      .botao-baixar { animation: none; transition: none; }
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="pagina">
+
+    <header class="marca" aria-label="JanjaCord">
+      <span class="anel" aria-hidden="true"></span>
+      <span>Janja<b>Cord</b></span>
+    </header>
+
+    <main>
+      <section class="principal">
+        <h1>Converse e mostre sua tela.<br><em>É só baixar e usar.</em></h1>
+        <p class="chamada">Salas de voz com tela em Full HD para até 10 pessoas. <strong>Grátis, sem conta e sem cadastro.</strong></p>
+
+        <!-- Link direto: sempre baixa o instalador da versão mais nova -->
+        <a class="botao-baixar" id="botao-baixar"
+           href="https://github.com/relaamorim/janjacord/releases/latest/download/JanjaCord-Setup.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/>
+          </svg>
+          Baixar para Windows
+        </a>
+        <p class="detalhes-arquivo" id="detalhes-arquivo">Para Windows 10 e 11 · cerca de 80 MB</p>
+
+        <!-- Aparece depois do clique no botão -->
+        <div class="aviso aviso-comecou" id="aviso-comecou" role="status">
+          <strong>O download começou!</strong> Ele aparece no canto de cima do navegador (ou na pasta <strong>Downloads</strong>). Enquanto baixa, veja abaixo o que fazer em seguida. 👇
+        </div>
+
+        <!-- Aparece só para quem abriu no celular ou em outro sistema -->
+        <div class="aviso aviso-celular" id="aviso-celular">
+          <strong>Você não está em um computador com Windows.</strong> O JanjaCord funciona só no Windows. Abra este link no seu computador para baixar.
+          <br>
+          <button class="botao-copiar" id="botao-copiar" type="button">Copiar o link desta página</button>
+        </div>
+
+        <ul class="selos">
+          <li>Grátis</li>
+          <li>Sem conta</li>
+          <li>Atualiza sozinho</li>
+          <li>Código aberto</li>
+        </ul>
+      </section>
+
+      <section id="passos">
+        <h2>Depois de baixar, são 3 passos</h2>
+        <p class="subtitulo">Leva menos de um minuto.</p>
+
+        <ol class="passos">
+          <li class="passo">
+            <span class="numero" aria-hidden="true">1</span>
+            <div>
+              <h3>Abra o arquivo que você baixou</h3>
+              <p>Ele se chama <span class="nome-arquivo">JanjaCord-Setup.exe</span> e fica na pasta <strong>Downloads</strong>. Dê dois cliques nele.</p>
+              <p class="dica"><strong>O navegador reclamou do arquivo?</strong> No Chrome ou no Edge, clique nos <strong>três pontinhos (…)</strong> ao lado do download e escolha <strong>“Manter”</strong>. Se ele perguntar de novo, escolha <strong>“Manter assim mesmo”</strong>.</p>
+            </div>
+          </li>
+
+          <li class="passo">
+            <span class="numero" aria-hidden="true">2</span>
+            <div>
+              <h3>Apareceu uma tela azul do Windows? É normal</h3>
+              <p>Clique primeiro em <strong>“Mais informações”</strong> e depois em <strong>“Executar assim mesmo”</strong>. A tela é assim:</p>
+
+              <!-- Desenho da tela do Windows -->
+              <div class="janela-windows" role="img" aria-label="Tela azul do Windows com o texto O Windows protegeu o computador. Clique em Mais informações e depois em Executar assim mesmo.">
+                <div class="titulo-janela">O Windows protegeu o computador</div>
+                <div class="texto-janela">O Microsoft Defender SmartScreen impediu a inicialização de um aplicativo não reconhecido.</div>
+                <div class="linha">
+                  <span class="link-janela">Mais informações</span>
+                  <span class="etiqueta">← 1º clique aqui</span>
+                </div>
+                <div class="linha botoes-janela">
+                  <span class="etiqueta">2º depois aqui →</span>
+                  <span class="botao-janela destaque">Executar assim mesmo</span>
+                  <span class="botao-janela">Não executar</span>
+                </div>
+              </div>
+            </div>
+          </li>
+
+          <li class="passo">
+            <span class="numero" aria-hidden="true">3</span>
+            <div>
+              <h3>Pronto! O JanjaCord abre sozinho</h3>
+              <p>Ele se instala em segundos e cria um atalho na <strong>área de trabalho</strong>. Escreva seu nome e clique em <strong>“Criar uma sala”</strong>, ou digite o <strong>código de 6 letras</strong> que te mandaram e clique em <strong>“Entrar”</strong>.</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="explicacao">
+          <h3>Por que o Windows mostra esse aviso?</h3>
+          <p>Porque o JanjaCord ainda não tem “assinatura digital”, um certificado pago que custa caro por ano — e este é um projeto gratuito. O aplicativo é seguro: todo o código é aberto e qualquer pessoa pode conferir.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Precisa da versão portátil (sem instalar) ou de uma versão antiga? <a href="https://github.com/relaamorim/janjacord/releases/latest">Veja todas as opções</a>.</p>
+      <p>JanjaCord é gratuito e de código aberto · <a href="https://github.com/relaamorim/janjacord">ver o projeto no GitHub</a></p>
+    </footer>
+  </div>
+
+  <script>
+    // --- Depois do clique em "Baixar": mostra o aviso e leva a pessoa até o passo a passo ---
+    const botaoBaixar = document.getElementById('botao-baixar')
+    const avisoComecou = document.getElementById('aviso-comecou')
+
+    botaoBaixar.addEventListener('click', () => {
+      avisoComecou.classList.add('visivel')
+      // Espera um instante para o download iniciar antes de rolar a página
+      setTimeout(() => {
+        document.getElementById('passos').scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 1800)
+    })
+
+    // --- Quem abriu no celular (ou Mac/Linux) vê o aviso para abrir no computador ---
+    const ehWindows = /Windows/i.test(navigator.userAgent)
+    if (!ehWindows) {
+      document.getElementById('aviso-celular').classList.add('visivel')
+    }
+
+    const botaoCopiar = document.getElementById('botao-copiar')
+    botaoCopiar.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(location.href)
+        botaoCopiar.textContent = 'Link copiado ✓'
+      } catch (erro) {
+        // Se o navegador não deixar copiar, mostra o endereço para a pessoa copiar na mão
+        botaoCopiar.textContent = location.href
+      }
+    })
+
+    // --- Mostra o número e o tamanho da versão mais nova (se não der, fica o texto padrão) ---
+    fetch('https://api.github.com/repos/relaamorim/janjacord/releases/latest')
+      .then((resposta) => (resposta.ok ? resposta.json() : null))
+      .then((versao) => {
+        if (!versao) return
+        const instalador = versao.assets.find((arquivo) => arquivo.name === 'JanjaCord-Setup.exe')
+        const tamanho = instalador ? ` · ${Math.round(instalador.size / 1048576)} MB` : ''
+        document.getElementById('detalhes-arquivo').textContent =
+          `Versão ${versao.tag_name.replace(/^v/, '')} · para Windows 10 e 11${tamanho}`
+      })
+      .catch(() => { /* sem internet para a consulta: mantém o texto padrão */ })
+  </script>
+</body>
+</html>

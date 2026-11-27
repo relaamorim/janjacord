@@ -54,6 +54,7 @@
       ]
     },
     "nsis": {
+      "artifactName": "JanjaCord-Setup.${ext}",
       "oneClick": true,
       "perMachine": false,
       "shortcutName": "JanjaCord"

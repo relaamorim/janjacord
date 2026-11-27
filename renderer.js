@@ -2,11 +2,14 @@
 // JanjaCord — lógica da interface
 //
 // Como funciona, em resumo:
-// • Quem CRIA a sala vira o "anfitrião": recebe um código e fica
-//   com um endereço fixo na rede (via serviço gratuito PeerJS).
-// • Quem ENTRA usa o código para achar o anfitrião. O anfitrião
+// • O código da sala é um endereço fixo na rede (via serviço gratuito
+//   PeerJS). A sala está SEMPRE disponível: quem entra primeiro
+//   ocupa esse endereço e vira o "anfitrião" (quem segura a sala).
+// • Quem entra depois usa o código para achar o anfitrião. Ele
 //   apresenta todo mundo, e cada pessoa conecta áudio e tela
 //   DIRETAMENTE com as outras (conexão ponto a ponto).
+// • Se o anfitrião sair, outra pessoa da sala assume o endereço
+//   sozinha e os demais se religam a ela — a sala não fecha.
 // • O vídeo da tela é enviado em Full HD (1920x1080) com taxa de
 //   bits reforçada para o texto ficar nítido.
 // ============================================================
@@ -55,16 +58,25 @@ const estado = {
   jaEntrei: false,          // já recebi o "bem-vindo" pelo menos uma vez
   batimento: null,          // relógio do "batimento" com o anfitrião
   ultimoPong: 0,
-  tentativasReconexao: 0,
-  reconexaoAgendada: null,
   alarmeEntrada: null,
+  rodadaEntrada: 0,         // quantas vezes já recomecei a entrada nesta tentativa
+  geracao: 0,               // aumenta a cada saída: tarefas antigas em espera percebem e param
+  sessaoAnfitriao: null,    // "crachá" de quem segura a sala agora (muda quando ela troca de mãos)
+  recuperando: false,       // estou tentando reencontrar (ou assumir) a sala
+  aoSalaVazia: null,        // aviso interno: "ninguém está segurando a sala neste instante"
+  pendentes: new Map(),     // (só anfitrião que assumiu) id -> prazo para a pessoa me reencontrar
   somApp: null,             // captura do som de um aplicativo: { contexto, destino, proximoInicio }
   pararMeuMonitor: null,
   saindo: false,
   chatAberto: false,
   naoLidas: 0,
-  historicoChat: []  // (só o anfitrião) últimas mensagens, para quem chega depois
+  historicoChat: []  // últimas mensagens: o anfitrião mostra a quem chega; os demais guardam para o caso de assumirem a sala
 }
+
+// Endereço da sala na rede: é ele que o anfitrião ocupa
+const idDaSala = () => PREFIXO_SALA + estado.codigo.toLowerCase()
+
+const esperar = (ms) => new Promise((resolver) => setTimeout(resolver, ms))
 
 let contextoAudio = null // usado para detectar quem está falando
 
@@ -75,6 +87,34 @@ const prefSaida = () => localStorage.getItem('mydisc-saida') || ''        // '' 
 const prefResolucao = () => localStorage.getItem('mydisc-resolucao') || '1080'
 const prefSomTela = () => localStorage.getItem('mydisc-som-tela') || 'app' // 'app', 'sistema' ou 'dispositivo'
 const prefSomTelaDispositivo = () => localStorage.getItem('mydisc-som-tela-dispositivo') || ''
+const prefUltimaSala = () => localStorage.getItem('mydisc-ultima-sala') || '' // código da última sala em que estive
+
+// Guarda a sala atual como "minha sala", para voltar nela com um clique
+function lembrarSala() {
+  localStorage.setItem('mydisc-ultima-sala', estado.codigo)
+}
+
+// Os canais de voz de cada sala ficam guardados neste computador: se a sala
+// esvaziar, quem abrir de novo traz os canais de volta
+function guardarCanais() {
+  try {
+    localStorage.setItem('mydisc-canais-' + estado.codigo, JSON.stringify(estado.canais))
+  } catch (_) { /* sem espaço para guardar: segue sem */ }
+}
+
+function canaisGuardados() {
+  try {
+    const lista = JSON.parse(localStorage.getItem('mydisc-canais-' + estado.codigo))
+    if (!Array.isArray(lista)) return null
+    const validos = lista
+      .filter((c) => c && typeof c.id === 'string' && typeof c.nome === 'string' && c.id !== CANAL_PADRAO.id)
+      .slice(0, LIMITE_CANAIS - 1)
+      .map((c) => ({ id: c.id, nome: c.nome.slice(0, 20) }))
+    return [{ ...CANAL_PADRAO }, ...validos]
+  } catch (_) {
+    return null
+  }
+}
 
 // Servidores que ajudam os computadores a se acharem (STUN) e, quando a
 // conexão direta é bloqueada, retransmitem o áudio/vídeo (TURN)
@@ -497,30 +537,49 @@ function criarPeer(idDesejado) {
 
     if (meta.tipo === 'tela') {
       chamada.answer() // só recebo, não envio nada de volta
+      let videoDestaChamada = null
       chamada.on('stream', (stream) => {
+        videoDestaChamada = stream
         adicionarTransmissao(chamada.peer, meta.nome || 'Alguém', stream, false)
       })
-      chamada.on('close', () => removerTransmissao(chamada.peer))
+      chamada.on('close', () => {
+        // Só tira o quadro se ele ainda for o DESTA chamada (a pessoa pode
+        // já ter reenviado a tela por uma chamada nova)
+        const atual = estado.transmissoes.get(chamada.peer)
+        if (atual && atual.stream === videoDestaChamada) removerTransmissao(chamada.peer)
+      })
     }
   })
 
+  // Os avisos abaixo só valem enquanto ESTA for a minha identidade em uso
+  // (durante uma troca de anfitrião existem duas por um instante)
+  const ehAtual = () => estado.peer === peer && !estado.saindo
+
+  // Voltei a falar com o serviço de encontro depois de uma queda
+  peer.on('open', () => {
+    if (!ehAtual() || estado.recuperando) return
+    if (estado.souAnfitriao || estado.jaEntrei) atualizarStatus('conectado', 'Conectado')
+  })
+
   peer.on('disconnected', () => {
-    if (estado.saindo) return
+    if (!ehAtual()) return
     atualizarStatus('conectando', 'Reconectando…')
     try { peer.reconnect() } catch (_) { /* ignora */ }
   })
 
   peer.on('error', (erro) => {
     console.log('Erro de conexão:', erro.type, erro.message)
-    if (estado.saindo) return
+    if (!ehAtual()) return
 
     if (erro.type === 'peer-unavailable') {
-      // Esse erro também aparece ao ligar para alguém que acabou de sair,
-      // então só significa "sala não existe" se eu ainda nem entrei nela.
-      if (!estado.souAnfitriao && estado.membros.size === 0) {
-        avisar('Sala não encontrada. Confira o código e tente de novo.', 'erro')
-        sairDaSala(null, true)
-      }
+      // Esse erro também aparece ao ligar para alguém que acabou de sair;
+      // só interessa quando quem não respondeu foi o endereço da própria sala.
+      if (!String(erro.message || '').includes(idDaSala())) return
+      if (estado.aoSalaVazia) estado.aoSalaVazia()
+      else if (!estado.souAnfitriao && !estado.jaEntrei) recomecarEntrada()
+    } else if (erro.type === 'unavailable-id') {
+      // Eu segurava a sala, fiquei sem conexão e outra pessoa a abriu nesse meio-tempo
+      if (estado.souAnfitriao) devolverSala()
     } else if (erro.type === 'network' || erro.type === 'server-error') {
       atualizarStatus('erro', 'Sem conexão')
       avisar('Problema de conexão com a internet. Tentando de novo…', 'erro')
@@ -530,107 +589,219 @@ function criarPeer(idDesejado) {
   return peer
 }
 
-// ---------- criar sala (anfitrião) ----------
+// ---------- entrar na sala (abrindo-a, se estiver vazia) ----------
 
-async function criarSala(tentativa = 0) {
+// Confere o nome digitado na tela de entrada
+function lerNomeDoLobby() {
   estado.nome = $('campo-nome').value.trim()
   if (!estado.nome) {
     avisar('Escreva seu nome primeiro. 🙂', 'erro')
     $('campo-nome').focus()
-    return
+    return false
   }
   localStorage.setItem('mydisc-nome', estado.nome)
+  return true
+}
 
-  estado.souAnfitriao = true
-  estado.codigo = gerarCodigo()
-  estado.saindo = false
+function travarLobby(travado) {
+  for (const id of ['botao-criar', 'botao-entrar', 'botao-minha-sala']) $(id).disabled = travado
+}
 
-  $('botao-criar').disabled = true
+// Botão "Criar uma sala": sorteia um código novo
+function criarSala() {
+  if (!lerNomeDoLobby()) return
+  entrarNaSala(gerarCodigo(), { nova: true })
+}
 
-  const peer = criarPeer(PREFIXO_SALA + estado.codigo.toLowerCase())
-  estado.peer = peer
+// Botão "Entrar": usa o código digitado (ou o da minha última sala)
+function entrarEmSala(codigoDireto) {
+  if (!lerNomeDoLobby()) return
+  const codigo = String(codigoDireto || $('campo-codigo').value).trim().toUpperCase()
+  if (!/^[A-Z0-9]{6}$/.test(codigo)) {
+    avisar('O código da sala tem 6 letras ou números, sem espaços nem acentos.', 'erro')
+    $('campo-codigo').focus()
+    return
+  }
+  entrarNaSala(codigo)
+}
 
-  peer.on('open', async (id) => {
-    estado.meuId = id
-    $('botao-criar').disabled = false
-    estado.canais = [{ ...CANAL_PADRAO }]
-    estado.meuCanal = CANAL_PADRAO.id
-    entrarNaTelaDaSala()
-    atualizarStatus('conectado', 'Conectado')
-    estado.streamMic = await obterMicrofone()
-    ligarMeuDetectorDeFala()
-    avisar(`Sala ${estado.codigo} criada! Compartilhe o código.`)
-  })
-
-  // Se por coincidência o código já estiver em uso, tenta outro
-  peer.on('error', (erro) => {
-    if (erro.type === 'unavailable-id' && tentativa < 3) {
-      peer.destroy()
-      criarSala(tentativa + 1)
-    } else if (erro.type === 'unavailable-id') {
-      $('botao-criar').disabled = false
-      avisar('Não consegui criar a sala agora. Tente de novo.', 'erro')
+// Tenta ocupar o endereço da sala. A resposta do serviço é imediata:
+// 'ok' (a sala estava vazia e agora eu a seguro), 'ocupado' (já tem
+// alguém segurando) ou 'erro' (sem conexão).
+function tentarOcuparSala() {
+  return new Promise((resolver) => {
+    const peer = criarPeer(idDaSala())
+    let decidido = false
+    const decidir = (resultado) => {
+      if (decidido) return
+      decidido = true
+      clearTimeout(limite)
+      if (resultado !== 'ok') { try { peer.destroy() } catch (_) { /* ignora */ } }
+      resolver({ resultado, peer })
     }
+    const limite = setTimeout(() => decidir('erro'), 8000)
+    peer.on('open', () => decidir('ok'))
+    peer.on('error', (erro) => decidir(erro.type === 'unavailable-id' ? 'ocupado' : 'erro'))
   })
+}
 
-  // Alguém novo chegou na sala
-  peer.on('connection', (conexao) => {
-    conexao.on('open', () => {
-      const jaConhecido = estado.membros.has(conexao.peer)
+// Entra na sala do código dado. Toda sala existe sempre: se não houver
+// ninguém nela, eu mesmo a abro e fico esperando os outros.
+async function entrarNaSala(codigo, { nova = false, rodada = 0 } = {}) {
+  estado.codigo = codigo
+  estado.souAnfitriao = false
+  estado.saindo = false
+  estado.rodadaEntrada = rodada
+  travarLobby(true)
+  const geracao = estado.geracao
 
-      // Sala cheia? Avisa e desconecta educadamente
-      if (!jaConhecido && estado.membros.size + 1 >= LIMITE_PESSOAS) {
-        conexao.send({ tipo: 'sala-cheia' })
-        setTimeout(() => conexao.close(), 300)
-        return
-      }
+  const { resultado, peer } = await tentarOcuparSala()
+  if (geracao !== estado.geracao) {
+    if (resultado === 'ok') { try { peer.destroy() } catch (_) { /* ignora */ } }
+    return
+  }
 
-      const nomeNovo = (conexao.metadata && conexao.metadata.nome) || 'Convidado'
+  if (resultado === 'ok') {
+    abrirSala(peer, nova)
+    return
+  }
 
-      // Apresenta a sala para quem chegou: quem já está aqui + quem transmite
-      conexao.send({
-        tipo: 'bemvindo',
-        nomeAnfitriao: estado.nome,
-        canalAnfitriao: estado.meuCanal,
-        codigo: estado.codigo,
-        canais: estado.canais,
-        membros: [...estado.membros.entries()].map(([id, m]) => ({
-          id, nome: m.nome, mudo: !!m.mudo, canal: m.canal || CANAL_PADRAO.id
+  if (resultado === 'ocupado' && nova) {
+    // Coincidência rara: o código sorteado já tem gente. Sorteia outro.
+    if (rodada < 3) {
+      entrarNaSala(gerarCodigo(), { nova: true, rodada: rodada + 1 })
+      return
+    }
+    travarLobby(false)
+    avisar('Não consegui criar a sala agora. Tente de novo.', 'erro')
+    return
+  }
+
+  if (resultado === 'ocupado') {
+    entrarComoConvidado()
+    return
+  }
+
+  travarLobby(false)
+  avisar('Não consegui conectar. Confira sua internet e tente de novo.', 'erro')
+}
+
+// A sala estava vazia: passo a segurá-la e espero os outros chegarem
+async function abrirSala(peer, nova) {
+  virarAnfitriao(peer)
+  estado.canais = (!nova && canaisGuardados()) || [{ ...CANAL_PADRAO }]
+  estado.meuCanal = CANAL_PADRAO.id
+  estado.historicoChat = []
+  lembrarSala()
+  travarLobby(false)
+  entrarNaTelaDaSala()
+  atualizarStatus('conectado', 'Conectado')
+  avisar(nova
+    ? `Sala ${estado.codigo} criada! Compartilhe o código.`
+    : `Sala ${estado.codigo} aberta. Você é a primeira pessoa aqui.`)
+
+  const geracao = estado.geracao
+  const microfone = await obterMicrofone()
+  if (geracao !== estado.geracao) {
+    // Saí da sala antes de o microfone ficar pronto
+    microfone.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+    return
+  }
+  estado.streamMic = microfone
+  ligarMeuDetectorDeFala()
+}
+
+// Passo a ser quem segura a sala: é no meu endereço que as pessoas chegam
+function virarAnfitriao(peer) {
+  estado.peer = peer
+  estado.meuId = peer.id
+  estado.souAnfitriao = true
+  // "Crachá" deste período: os outros percebem por ele que a sala trocou de mãos
+  estado.sessaoAnfitriao = Math.random().toString(36).slice(2, 10)
+  peer.on('connection', (conexao) => receberNaSala(conexao))
+}
+
+// (só o anfitrião) Alguém chegou — ou voltou — à sala
+function receberNaSala(conexao) {
+  conexao.on('open', () => {
+    if (!estado.souAnfitriao) return
+    const id = conexao.peer
+    const jaConhecido = estado.membros.has(id)
+
+    // Sala cheia? Avisa e desconecta educadamente
+    if (!jaConhecido && estado.membros.size + 1 >= LIMITE_PESSOAS) {
+      conexao.send({ tipo: 'sala-cheia' })
+      setTimeout(() => conexao.close(), 300)
+      return
+    }
+
+    const nomeNovo = (conexao.metadata && conexao.metadata.nome) || 'Convidado'
+    const membro = garantirMembro(id, nomeNovo)
+    // Quem chega pela primeira vez sempre começa no canal Geral
+    if (!jaConhecido) membro.canal = CANAL_PADRAO.id
+
+    // Quem voltou depois de uma troca de anfitrião já não está mais "pendente"
+    clearTimeout(estado.pendentes.get(id))
+    estado.pendentes.delete(id)
+
+    // Apresenta a sala para quem chegou: quem já está aqui + as conversas
+    conexao.send({
+      tipo: 'bemvindo',
+      nomeAnfitriao: estado.nome,
+      canalAnfitriao: estado.meuCanal,
+      mudoAnfitriao: estado.micMudo,
+      sessao: estado.sessaoAnfitriao,
+      seuCanal: membro.canal || CANAL_PADRAO.id,
+      codigo: estado.codigo,
+      canais: estado.canais,
+      membros: [...estado.membros.entries()]
+        .filter(([outroId]) => outroId !== id)
+        .map(([outroId, m]) => ({
+          id: outroId, nome: m.nome, mudo: !!m.mudo, canal: m.canal || CANAL_PADRAO.id
         })),
-        historico: estado.historicoChat.slice(-50)
-      })
-
-      const membro = garantirMembro(conexao.peer, nomeNovo)
-      const conexaoAntiga = membro.conexaoDados
-      membro.conexaoDados = conexao
-      if (conexaoAntiga && conexaoAntiga !== conexao) {
-        try { conexaoAntiga.close() } catch (_) { /* ignora */ }
-      }
-
-      if (!jaConhecido) {
-        // Avisa os demais (quem chega sempre começa no canal Geral)
-        enviarParaTodos({ tipo: 'entrou', id: conexao.peer, nome: nomeNovo, canal: CANAL_PADRAO.id }, conexao.peer)
-        membro.canal = CANAL_PADRAO.id
-        avisar(nomeNovo + ' entrou na sala.', 'info')
-        mensagemSistema(nomeNovo + ' entrou na sala')
-      }
-      renderizarParticipantes()
-
-      // Se eu transmito no canal da pessoa, incluo ela
-      if (estado.streamTela && estado.meuCanal === membro.canal) ligarTelaPara(conexao.peer)
+      historico: estado.historicoChat.slice(-50)
     })
 
-    conexao.on('data', (mensagem) => tratarMensagemComoAnfitriao(conexao, mensagem))
-
-    // Só remove a pessoa se ESTA conexão ainda for a atual dela
-    // (uma reconexão substitui a antiga sem derrubar ninguém)
-    const seForAtual = () => {
-      const m = estado.membros.get(conexao.peer)
-      if (m && m.conexaoDados === conexao) removerMembro(conexao.peer)
+    const conexaoAntiga = membro.conexaoDados
+    membro.conexaoDados = conexao
+    if (conexaoAntiga && conexaoAntiga !== conexao) {
+      try { conexaoAntiga.close() } catch (_) { /* ignora */ }
     }
-    conexao.on('close', seForAtual)
-    conexao.on('error', seForAtual)
+
+    if (!jaConhecido) {
+      enviarParaTodos({ tipo: 'entrou', id, nome: nomeNovo, canal: CANAL_PADRAO.id }, id)
+      avisar(nomeNovo + ' entrou na sala.', 'info')
+      mensagemSistema(nomeNovo + ' entrou na sala')
+    }
+    renderizarParticipantes()
+
+    // Se eu transmito no canal da pessoa, incluo ela
+    if (estado.streamTela && estado.meuCanal === membro.canal) ligarTelaPara(id)
+
+    // Quem volta é quem me liga para a voz. Mas quem ainda usa uma versão
+    // antiga do aplicativo pode demorar a perceber que a sala trocou de mãos:
+    // se a ligação não chegar em 2,5 s, eu mesmo ligo.
+    if (jaConhecido) {
+      setTimeout(() => {
+        const atual = estado.membros.get(id)
+        if (!estado.souAnfitriao || estado.saindo || atual !== membro) return
+        if (membro.conexaoDados === conexao && !membro.chamadaVoz && membro.canal === estado.meuCanal) {
+          ligarVozPara(id)
+        }
+      }, 2500)
+    }
   })
+
+  conexao.on('data', (mensagem) => tratarMensagemComoAnfitriao(conexao, mensagem))
+
+  // Só remove a pessoa se ESTA conexão ainda for a atual dela
+  // (uma reconexão substitui a antiga sem derrubar ninguém)
+  const seForAtual = () => {
+    const m = estado.membros.get(conexao.peer)
+    if (estado.souAnfitriao && m && m.conexaoDados === conexao) removerMembro(conexao.peer)
+  }
+  conexao.on('close', seForAtual)
+  conexao.on('error', seForAtual)
 }
 
 // O anfitrião recebe estados dos membros e repassa a todos
@@ -674,8 +845,7 @@ function tratarMensagemComoAnfitriao(conexao, mensagem) {
     if (!texto) return
     // O anfitrião "carimba" a mensagem (autor + horário) e repassa a todos
     const carimbada = { tipo: 'chat', id, nome: membro.nome, texto, hora: Date.now() }
-    estado.historicoChat.push(carimbada)
-    if (estado.historicoChat.length > 50) estado.historicoChat.shift()
+    guardarNoHistorico(carimbada)
     enviarParaTodos(carimbada, id)
     renderizarMensagemChat(carimbada, false)
   }
@@ -693,6 +863,9 @@ function enviarParaTodos(mensagem, excetoId) {
 function removerMembro(id) {
   const membro = estado.membros.get(id)
   if (!membro) return
+
+  clearTimeout(estado.pendentes.get(id))
+  estado.pendentes.delete(id)
 
   if (membro.audioEl) membro.audioEl.remove()
   if (membro.pararMonitor) membro.pararMonitor()
@@ -797,6 +970,13 @@ function mensagemSistema(texto) {
   area.scrollTop = area.scrollHeight
 }
 
+// Todos guardam as últimas 50 mensagens: quem segura a sala mostra a quem
+// chega, e quem assumir a sala depois continua tendo o que mostrar
+function guardarNoHistorico(mensagem) {
+  estado.historicoChat.push(mensagem)
+  if (estado.historicoChat.length > 50) estado.historicoChat.shift()
+}
+
 function enviarMensagemChat() {
   const campo = $('campo-chat')
   const texto = campo.value.trim()
@@ -810,9 +990,8 @@ function enviarMensagemChat() {
   campo.value = ''
   const minha = { tipo: 'chat', id: estado.meuId, nome: estado.nome, texto, hora: Date.now() }
 
+  guardarNoHistorico(minha)
   if (estado.souAnfitriao) {
-    estado.historicoChat.push(minha)
-    if (estado.historicoChat.length > 50) estado.historicoChat.shift()
     enviarParaTodos(minha)
   } else {
     // O anfitrião carimba e repassa para os outros
@@ -843,111 +1022,317 @@ function atualizarSeloChat() {
   selo.classList.toggle('escondido', estado.naoLidas === 0)
 }
 
-// ---------- entrar em sala (convidado) ----------
+// ---------- entrar em sala que já tem gente (convidado) ----------
 
-async function entrarEmSala() {
-  estado.nome = $('campo-nome').value.trim()
-  const codigo = $('campo-codigo').value.trim().toUpperCase()
-
-  if (!estado.nome) {
-    avisar('Escreva seu nome primeiro. 🙂', 'erro')
-    $('campo-nome').focus()
-    return
-  }
-  if (codigo.length < 6) {
-    avisar('O código da sala tem 6 letras/números.', 'erro')
-    $('campo-codigo').focus()
-    return
-  }
-  localStorage.setItem('mydisc-nome', estado.nome)
-
-  estado.souAnfitriao = false
-  estado.codigo = codigo
-  estado.saindo = false
-
-  $('botao-entrar').disabled = true
-
+function entrarComoConvidado() {
+  const geracao = estado.geracao
   const peer = criarPeer(null)
   estado.peer = peer
 
-  peer.on('open', async (id) => {
+  // "once": só na primeira vez (o serviço repete esse aviso a cada reconexão)
+  peer.once('open', async (id) => {
+    if (estado.peer !== peer) return
     estado.meuId = id
 
     // Pega o microfone ANTES de ligar para os outros
-    estado.streamMic = await obterMicrofone()
+    const microfone = await obterMicrofone()
+    if (geracao !== estado.geracao || estado.peer !== peer) {
+      microfone.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+      return
+    }
+    estado.streamMic = microfone
 
     conectarAoAnfitriao(false)
 
-    // Se em 10 segundos ninguém responder, desiste
+    // Se em 12 segundos ninguém responder, desiste
     estado.alarmeEntrada = setTimeout(() => {
       if (!estado.jaEntrei) {
-        avisar('Não consegui entrar na sala. Confira o código.', 'erro')
+        avisar('Não consegui entrar na sala. Tente de novo em instantes.', 'erro')
         sairDaSala(null, true)
       }
-    }, 10000)
+    }, 12000)
 
-    // Batimento cardíaco: a cada 15 s pergunto ao anfitrião se a sala está viva;
-    // sem resposta por 45 s, refaço a conexão
-    estado.ultimoPong = Date.now()
-    estado.batimento = setInterval(() => {
-      if (estado.saindo || !estado.conexaoAnfitriao) return
-      if (estado.conexaoAnfitriao.open) {
-        try { estado.conexaoAnfitriao.send({ tipo: 'ping' }) } catch (_) { /* ignora */ }
-      }
-      if (Date.now() - estado.ultimoPong > 45000) {
-        estado.ultimoPong = Date.now()
-        perderContatoComAnfitriao()
-      }
-    }, 15000)
+    iniciarBatimento()
   })
+}
+
+// Durante a entrada, o serviço avisou que não há mais ninguém segurando a
+// sala (quem estava saiu bem nessa hora): recomeço, agora para abri-la eu mesmo
+function recomecarEntrada() {
+  clearTimeout(estado.alarmeEntrada)
+  clearInterval(estado.batimento)
+  estado.batimento = null
+  const peer = estado.peer
+  estado.peer = null
+  estado.conexaoAnfitriao = null
+  try { if (peer) peer.destroy() } catch (_) { /* ignora */ }
+  if (estado.streamMic) {
+    estado.streamMic.getTracks().forEach((t) => { try { t.stop() } catch (_) { /* ignora */ } })
+    estado.streamMic = null
+  }
+
+  if (estado.rodadaEntrada >= 3) {
+    avisar('Não consegui entrar na sala. Tente de novo em instantes.', 'erro')
+    sairDaSala(null, true)
+    return
+  }
+  entrarNaSala(estado.codigo, { rodada: estado.rodadaEntrada + 1 })
+}
+
+// Batimento cardíaco: a cada 5 s pergunto ao anfitrião se a sala está viva;
+// sem resposta por 20 s (ele caiu sem avisar), procuro a sala de novo
+function iniciarBatimento() {
+  clearInterval(estado.batimento)
+  estado.ultimoPong = Date.now()
+  estado.batimento = setInterval(() => {
+    if (estado.saindo || estado.souAnfitriao || estado.recuperando || !estado.conexaoAnfitriao) return
+    if (estado.conexaoAnfitriao.open) {
+      try { estado.conexaoAnfitriao.send({ tipo: 'ping' }) } catch (_) { /* ignora */ }
+    }
+    if (Date.now() - estado.ultimoPong > 20000) {
+      estado.ultimoPong = Date.now()
+      recuperarSala()
+    }
+  }, 5000)
 }
 
 // Abre (ou reabre) o canal de dados com o anfitrião
 function conectarAoAnfitriao(reentrada) {
-  const conexao = estado.peer.connect(PREFIXO_SALA + estado.codigo.toLowerCase(), {
+  if (!estado.peer) return null
+  const conexao = estado.peer.connect(idDaSala(), {
     reliable: true,
     metadata: { nome: estado.nome, reentrada: !!reentrada }
   })
+  // Sem contato com o serviço de encontro o PeerJS nem chega a criar a conexão
+  if (!conexao) return null
   estado.conexaoAnfitriao = conexao
 
   conexao.on('open', () => {
-    estado.tentativasReconexao = 0
     estado.ultimoPong = Date.now()
-    if (reentrada) {
+    if (reentrada && estado.conexaoAnfitriao === conexao) {
       atualizarStatus('conectado', 'Conectado')
-      avisar('Reconectado à sala!')
+      avisar('Tudo certo: você continua na sala.')
     }
   })
-  conexao.on('data', (mensagem) => tratarMensagemComoConvidado(mensagem))
-  conexao.on('close', () => {
-    if (!estado.saindo && estado.conexaoAnfitriao === conexao) perderContatoComAnfitriao()
+  conexao.on('data', (mensagem) => {
+    if (estado.conexaoAnfitriao === conexao) tratarMensagemComoConvidado(mensagem)
   })
-  conexao.on('error', () => {
-    if (!estado.saindo && estado.conexaoAnfitriao === conexao) perderContatoComAnfitriao()
-  })
+  const caiu = () => {
+    if (!estado.saindo && estado.conexaoAnfitriao === conexao) recuperarSala()
+  }
+  conexao.on('close', caiu)
+  conexao.on('error', caiu)
   return conexao
 }
 
-// Perdi o anfitrião: tento reconectar algumas vezes antes de desistir
-function perderContatoComAnfitriao() {
-  if (estado.saindo || estado.souAnfitriao || estado.reconexaoAgendada) return
-  estado.tentativasReconexao++
+// ============================================================
+// A SALA NUNCA FECHA
+// Se quem segura a sala sair (ou cair), os que ficaram se organizam
+// sozinhos: um deles assume o endereço da sala e os outros se religam
+// a ele. Não há disputa: o serviço só entrega o endereço a uma pessoa.
+// ============================================================
 
-  if (estado.tentativasReconexao > 5) {
-    sairDaSala('A conexão com a sala caiu e não consegui voltar. Entre de novo com o código.')
-    return
-  }
+// Uma tentativa de falar com quem estiver segurando a sala agora.
+// Responde 'ok' (conectei), 'vazia' (ninguém segura) ou 'sem-resposta'.
+function tentarFalarComASala(limiteMs) {
+  return new Promise((resolver) => {
+    try { if (estado.conexaoAnfitriao) estado.conexaoAnfitriao.close() } catch (_) { /* ignora */ }
+    estado.conexaoAnfitriao = null
+    const conexao = conectarAoAnfitriao(true)
+
+    let decidido = false
+    const decidir = (resposta) => {
+      if (decidido) return
+      decidido = true
+      clearTimeout(limite)
+      estado.aoSalaVazia = null
+      resolver(resposta)
+    }
+    const limite = setTimeout(() => decidir('sem-resposta'), limiteMs)
+    if (!conexao) return // sem serviço de encontro: só resta esperar o prazo
+    conexao.on('open', () => decidir('ok'))
+    estado.aoSalaVazia = () => decidir('vazia')
+  })
+}
+
+// Perdi o contato com a sala: tento ocupar o endereço dela. Se estiver vago,
+// passo a segurar a sala; se já tiver dono (o de antes ou um novo), me religo
+// a ele. "saidaAvisada" = o anfitrião avisou que estava saindo (não foi queda).
+async function recuperarSala(saidaAvisada = false) {
+  if (estado.saindo || estado.souAnfitriao || estado.recuperando || !estado.jaEntrei) return
+  estado.recuperando = true
+
+  const geracao = estado.geracao
+  const desisti = () => geracao !== estado.geracao || estado.saindo
+  const religado = () => !!(estado.conexaoAnfitriao && estado.conexaoAnfitriao.open)
 
   atualizarStatus('conectando', 'Reconectando…')
-  if (estado.tentativasReconexao === 1) avisar('Perdi o contato com a sala. Tentando reconectar…', 'info')
+  const anfitriaoAtual = estado.membros.get(idDaSala())
+  avisar(saidaAvisada && anfitriaoAtual
+    ? `${anfitriaoAtual.nome} saiu. A sala continua aberta…`
+    : 'Perdi o contato com a sala. Reconectando…', 'info')
 
-  estado.reconexaoAgendada = setTimeout(() => {
-    estado.reconexaoAgendada = null
-    if (estado.saindo || !estado.peer) return
-    if (estado.peer.disconnected) { try { estado.peer.reconnect() } catch (_) { /* ignora */ } }
-    try { if (estado.conexaoAnfitriao) estado.conexaoAnfitriao.close() } catch (_) { /* ignora */ }
-    conectarAoAnfitriao(true)
-  }, 2000 * estado.tentativasReconexao)
+  // A ligação que eu tinha com o anfitrião não vale mais (mesmo que ainda
+  // pareça aberta: quando o outro lado cai de repente, ela demora a perceber)
+  const ligacaoAntiga = estado.conexaoAnfitriao
+  estado.conexaoAnfitriao = null
+  try { if (ligacaoAntiga) ligacaoAntiga.close() } catch (_) { /* ignora */ }
+
+  // Meio segundo para o endereço da sala ficar livre de verdade no serviço
+  await esperar(500)
+  if (desisti()) return
+
+  const inicio = Date.now()
+  while (Date.now() - inicio < 90000) {
+    if (religado()) break
+    if (estado.peer && estado.peer.disconnected) {
+      try { estado.peer.reconnect() } catch (_) { /* ignora */ }
+    }
+
+    // Todos os que ficaram tentam ao mesmo tempo; o serviço só entrega o
+    // endereço a UM — os outros recebem "ocupado" e se ligam a quem conseguiu
+    const { resultado, peer } = await tentarOcuparSala()
+    if (desisti()) {
+      if (resultado === 'ok') { try { peer.destroy() } catch (_) { /* ignora */ } }
+      return
+    }
+    if (resultado === 'ok') {
+      estado.recuperando = false
+      assumirSala(peer)
+      return
+    }
+    if (resultado === 'erro') {
+      // Sem internet agora: espera um pouco e tenta de novo
+      await esperar(2000)
+      if (desisti()) return
+      continue
+    }
+
+    // A sala tem dono: tento falar com ele
+    const resposta = await tentarFalarComASala(6000)
+    if (desisti()) return
+    if (resposta === 'ok') break
+
+    await esperar(resposta === 'vazia' ? 300 : 1000)
+    if (desisti()) return
+  }
+
+  estado.recuperando = false
+  if (!religado()) {
+    sairDaSala('A conexão com a sala caiu e não consegui voltar. Entre de novo com o código.')
+  }
+}
+
+// Derruba as ligações que dependiam da minha identidade antiga na rede (voz
+// e telas), sem mexer no microfone, na minha transmissão nem no chat
+function soltarLigacoes() {
+  clearInterval(estado.batimento)
+  estado.batimento = null
+
+  const conexao = estado.conexaoAnfitriao
+  estado.conexaoAnfitriao = null
+  try { if (conexao) conexao.close() } catch (_) { /* ignora */ }
+
+  for (const [id, membro] of estado.membros) {
+    desligarVozDe(id)
+    const dados = membro.conexaoDados
+    membro.conexaoDados = null
+    try { if (dados) dados.close() } catch (_) { /* ignora */ }
+  }
+
+  for (const [, chamada] of estado.chamadasTela) {
+    try { chamada.close() } catch (_) { /* ignora */ }
+  }
+  estado.chamadasTela.clear()
+
+  for (const [id, transmissao] of [...estado.transmissoes]) {
+    if (!transmissao.propria) removerTransmissao(id, true)
+  }
+  renderizarPalco()
+
+  for (const [, prazo] of estado.pendentes) clearTimeout(prazo)
+  estado.pendentes.clear()
+}
+
+// Meu endereço na rede mudou: a minha transmissão (se houver) me acompanha
+function trocarMinhaIdentidade(idNovo) {
+  const idAntigo = estado.meuId
+  estado.meuId = idNovo
+  const minhaTela = estado.transmissoes.get(idAntigo)
+  if (minhaTela && idAntigo !== idNovo) {
+    estado.transmissoes.delete(idAntigo)
+    estado.transmissoes.set(idNovo, minhaTela)
+    if (estado.focoId === idAntigo) estado.focoId = idNovo
+  }
+}
+
+// Consegui o endereço da sala: daqui em diante sou eu quem a segura.
+// A voz com os outros é refeita assim que cada um me reencontrar.
+function assumirSala(peerNovo) {
+  const peerAntigo = estado.peer
+  const anterior = estado.membros.get(idDaSala())
+  const nomeAnterior = anterior ? anterior.nome : null
+
+  soltarLigacoes()
+  if (anterior) removerMembro(idDaSala())
+
+  estado.peer = peerNovo
+  try { if (peerAntigo) peerAntigo.destroy() } catch (_) { /* ignora */ }
+  trocarMinhaIdentidade(peerNovo.id)
+  virarAnfitriao(peerNovo)
+
+  // Quem estava na sala tem 45 s para me reencontrar; depois disso, saiu
+  for (const id of estado.membros.keys()) {
+    estado.pendentes.set(id, setTimeout(() => {
+      estado.pendentes.delete(id)
+      const membro = estado.membros.get(id)
+      if (estado.souAnfitriao && membro && !membro.conexaoDados) removerMembro(id)
+    }, 45000))
+  }
+
+  $('botao-novo-canal').classList.remove('escondido')
+  atualizarStatus('conectado', 'Conectado')
+  if (nomeAnterior) mensagemSistema(`${nomeAnterior} saiu da sala`)
+  avisar('A sala continua aberta e a coroa agora é sua: você cria os canais de voz.', 'info')
+  renderizarPalco()
+  renderizarParticipantes()
+}
+
+// Eu segurava a sala, fiquei sem conexão e alguém a abriu nesse meio-tempo:
+// entrego o posto e volto para a sala como convidado
+function devolverSala() {
+  const geracao = estado.geracao
+  try { enviarParaTodos({ tipo: 'anfitriao-saindo' }) } catch (_) { /* ignora */ }
+
+  const peerAntigo = estado.peer
+  soltarLigacoes()
+  estado.souAnfitriao = false
+  estado.jaEntrei = true        // para o "bem-vindo" ser tratado como uma volta
+  estado.sessaoAnfitriao = null
+  estado.peer = null
+  try { if (peerAntigo) peerAntigo.destroy() } catch (_) { /* ignora */ }
+
+  $('botao-novo-canal').classList.add('escondido')
+  $('form-novo-canal').classList.add('escondido')
+  atualizarStatus('conectando', 'Reconectando…')
+
+  const peer = criarPeer(null)
+  estado.peer = peer
+
+  const prazo = setTimeout(() => {
+    if (geracao === estado.geracao && estado.peer === peer && !peer.open) {
+      sairDaSala('A conexão com a sala caiu e não consegui voltar. Entre de novo com o código.')
+    }
+  }, 20000)
+
+  peer.once('open', (id) => {
+    clearTimeout(prazo)
+    if (geracao !== estado.geracao || estado.peer !== peer) return
+    trocarMinhaIdentidade(id)
+    iniciarBatimento()
+    renderizarParticipantes()
+    recuperarSala()
+  })
 }
 
 function tratarMensagemComoConvidado(mensagem) {
@@ -958,8 +1343,10 @@ function tratarMensagemComoConvidado(mensagem) {
     return
   }
 
-  if (mensagem.tipo === 'encerrando') {
-    sairDaSala('A sala foi encerrada pelo anfitrião.')
+  if (mensagem.tipo === 'anfitriao-saindo' || mensagem.tipo === 'encerrando') {
+    // Quem segurava a sala saiu. A sala continua: um de nós assume o lugar.
+    // ('encerrando' é como as versões antigas do aplicativo avisam a saída)
+    recuperarSala(true)
     return
   }
 
@@ -972,46 +1359,71 @@ function tratarMensagemComoConvidado(mensagem) {
 
   if (mensagem.tipo === 'bemvindo') {
     clearTimeout(estado.alarmeEntrada)
-    $('botao-entrar').disabled = false
+    travarLobby(false)
     const reentrada = estado.jaEntrei
     estado.jaEntrei = true
+
+    // A sala trocou de mãos desde a última vez que falei com ela?
+    const trocouDeMaos = reentrada && (mensagem.sessao || null) !== estado.sessaoAnfitriao
+    estado.sessaoAnfitriao = mensagem.sessao || null
 
     // A lista de canais da sala
     estado.canais = mensagem.canais && mensagem.canais.length
       ? mensagem.canais : [{ ...CANAL_PADRAO }]
+    guardarCanais()
+
+    const idAnfitriao = idDaSala()
+    if (trocouDeMaos) {
+      // O endereço da sala agora é de outra pessoa: desfaço o que eu tinha
+      // com quem o ocupava antes (voz, tela, volume ajustado)
+      const anterior = estado.membros.get(idAnfitriao)
+      if (anterior) {
+        if (anterior.nome !== mensagem.nomeAnfitriao) mensagemSistema(`${anterior.nome} saiu da sala`)
+        removerMembro(idAnfitriao)
+      }
+    }
 
     // O anfitrião entra (ou se atualiza) na minha lista
-    const idAnfitriao = PREFIXO_SALA + estado.codigo.toLowerCase()
     const anfitriao = garantirMembro(idAnfitriao, mensagem.nomeAnfitriao)
     anfitriao.ehAnfitriao = true
     anfitriao.canal = mensagem.canalAnfitriao || CANAL_PADRAO.id
+    anfitriao.mudo = !!mensagem.mudoAnfitriao
 
-    // E os outros convidados também
-    for (const m of mensagem.membros) {
+    // E os outros convidados também (a lista pode me incluir: eu me pulo)
+    const outros = (mensagem.membros || []).filter((m) => m.id !== estado.meuId)
+    for (const m of outros) {
       const outro = garantirMembro(m.id, m.nome)
       outro.mudo = !!m.mudo
       outro.canal = m.canal || CANAL_PADRAO.id
     }
-    // Quem saiu enquanto eu estava desconectado
+    // Quem saiu enquanto eu estava desconectado (inclui o endereço antigo de
+    // quem acabou de assumir a sala)
     for (const id of [...estado.membros.keys()]) {
-      if (id !== idAnfitriao && !mensagem.membros.some((m) => m.id === id)) removerMembro(id)
+      if (id !== idAnfitriao && !outros.some((m) => m.id === id)) removerMembro(id)
     }
 
     if (reentrada) {
-      // Voltei para a sala: o anfitrião me colocou no Geral; religo a voz e
-      // volto sozinho para o canal em que eu estava
+      // Voltei para a sala: fico no canal em que eu estava e religo a voz
+      // só com quem faltar (as ligações que continuaram de pé são mantidas)
       const canalDesejado = estado.meuCanal
-      estado.meuCanal = CANAL_PADRAO.id
-      for (const [id, m] of estado.membros) {
-        if (m.canal === estado.meuCanal) ligarVozPara(id)
-      }
-      if (canalDesejado && canalDesejado !== CANAL_PADRAO.id &&
-          estado.canais.some((c) => c.id === canalDesejado)) {
+      estado.meuCanal = mensagem.seuCanal || CANAL_PADRAO.id // onde o anfitrião me tem
+      const possoVoltar = canalDesejado && estado.canais.some((c) => c.id === canalDesejado)
+
+      if (possoVoltar && canalDesejado !== estado.meuCanal) {
         trocarDeCanal(canalDesejado)
+      } else {
+        for (const [id, m] of estado.membros) {
+          if (m.canal === estado.meuCanal) ligarVozPara(id)
+          else desligarVozDe(id)
+        }
       }
+
       if (estado.streamTela) {
-        for (const [, chamada] of estado.chamadasTela) { try { chamada.close() } catch (_) { /* ignora */ } }
-        estado.chamadasTela.clear()
+        if (!trocouDeMaos) {
+          // Eu é que fiquei fora do ar: refaço o envio da tela para todos
+          for (const [, chamada] of estado.chamadasTela) { try { chamada.close() } catch (_) { /* ignora */ } }
+          estado.chamadasTela.clear()
+        }
         for (const [id, m] of estado.membros) {
           if (m.canal === estado.meuCanal) ligarTelaPara(id)
         }
@@ -1022,10 +1434,12 @@ function tratarMensagemComoConvidado(mensagem) {
     }
 
     estado.meuCanal = CANAL_PADRAO.id
+    estado.historicoChat = (mensagem.historico || []).slice(-50)
+    lembrarSala()
     entrarNaTelaDaSala()
     atualizarStatus('conectado', 'Conectado')
     ligarMeuDetectorDeFala()
-    avisar(`Você entrou na sala de ${mensagem.nomeAnfitriao}!`)
+    avisar(`Você entrou na sala ${estado.codigo}!`)
 
     // Mostra as últimas conversas do chat para quem acabou de chegar
     for (const antiga of (mensagem.historico || [])) {
@@ -1054,6 +1468,7 @@ function tratarMensagemComoConvidado(mensagem) {
 
   if (mensagem.tipo === 'novo-canal') {
     estado.canais.push(mensagem.canal)
+    guardarCanais()
     avisar(`Canal de voz "${mensagem.canal.nome}" criado!`, 'info')
     renderizarParticipantes()
     return
@@ -1088,6 +1503,7 @@ function tratarMensagemComoConvidado(mensagem) {
   }
 
   if (mensagem.tipo === 'chat') {
+    guardarNoHistorico(mensagem)
     renderizarMensagemChat(mensagem, mensagem.id === estado.meuId)
   }
 }
@@ -1262,6 +1678,7 @@ function criarCanal(nome) {
     nome
   }
   estado.canais.push(canal)
+  guardarCanais()
   enviarParaTodos({ tipo: 'novo-canal', canal })
   renderizarParticipantes()
   avisar(`Canal de voz "${nome}" criado!`)
@@ -1682,7 +2099,10 @@ function adicionarTransmissao(id, nome, stream, propria) {
   // No modo Foco, clicar na tela pequena traz ela para a frente
   quadro.addEventListener('click', () => {
     if (estado.layout === 'foco' && quadro.classList.contains('miniatura')) {
-      estado.focoId = id
+      // Procuro pelo quadro, não pelo id: o meu id muda se eu assumir a sala
+      for (const [chave, transmissao] of estado.transmissoes) {
+        if (transmissao.tile === quadro) estado.focoId = chave
+      }
       renderizarPalco()
     }
   })
@@ -2064,18 +2484,25 @@ function entrarNaTelaDaSala() {
 
 function sairDaSala(motivo, silencioso = false) {
   estado.saindo = true
+  estado.geracao++ // tarefas em espera (entrada, reconexão) percebem e param
 
-  // Anfitrião avisa todo mundo na hora, sem esperar a conexão cair
-  if (estado.souAnfitriao) enviarParaTodos({ tipo: 'encerrando' })
+  // Se eu segurava a sala, aviso na hora: a sala NÃO fecha — quem ficou
+  // assume o lugar sem esperar a conexão cair
+  if (estado.souAnfitriao) {
+    try { enviarParaTodos({ tipo: 'anfitriao-saindo' }) } catch (_) { /* ignora */ }
+  }
 
   pararSomDoApp()
   clearInterval(estado.batimento)
   estado.batimento = null
-  clearTimeout(estado.reconexaoAgendada)
-  estado.reconexaoAgendada = null
   clearTimeout(estado.alarmeEntrada)
   estado.alarmeEntrada = null
-  estado.tentativasReconexao = 0
+  for (const [, prazo] of estado.pendentes) clearTimeout(prazo)
+  estado.pendentes.clear()
+  estado.recuperando = false
+  estado.aoSalaVazia = null
+  estado.sessaoAnfitriao = null
+  estado.rodadaEntrada = 0
   estado.jaEntrei = false
 
   if (estado.pararMeuMonitor) { estado.pararMeuMonitor(); estado.pararMeuMonitor = null }
@@ -2127,8 +2554,8 @@ function sairDaSala(motivo, silencioso = false) {
   $('avatar-eu').classList.remove('falando')
   $('botao-tela').classList.remove('transmitindo')
   $('texto-botao-tela').textContent = 'Compartilhar tela'
-  $('botao-entrar').disabled = false
-  $('botao-criar').disabled = false
+  travarLobby(false)
+  atualizarLobby()
 
   // Limpa o chat para a próxima sala
   estado.historicoChat = []
@@ -2150,8 +2577,20 @@ function sairDaSala(motivo, silencioso = false) {
 // LIGAÇÕES DOS BOTÕES
 // ============================================================
 
+// Tela de entrada: quem já esteve numa sala ganha um botão para voltar nela
+// com um clique (o código vale para sempre), e "criar" passa a ser secundário
+function atualizarLobby() {
+  const minhaSala = prefUltimaSala()
+  $('botao-minha-sala').classList.toggle('escondido', !minhaSala)
+  $('texto-minha-sala').textContent = minhaSala
+  $('botao-criar').classList.toggle('botao-principal', !minhaSala)
+  $('botao-criar').classList.toggle('botao-secundario', !!minhaSala)
+  $('texto-botao-criar').textContent = minhaSala ? 'Criar uma sala nova' : 'Criar uma sala'
+}
+
 $('botao-criar').addEventListener('click', () => criarSala())
 $('botao-entrar').addEventListener('click', () => entrarEmSala())
+$('botao-minha-sala').addEventListener('click', () => entrarEmSala(prefUltimaSala()))
 
 $('campo-codigo').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') entrarEmSala()
@@ -2159,6 +2598,7 @@ $('campo-codigo').addEventListener('keydown', (e) => {
 $('campo-nome').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     if ($('campo-codigo').value.trim()) entrarEmSala()
+    else if (prefUltimaSala()) entrarEmSala(prefUltimaSala())
     else criarSala()
   }
 })
@@ -2356,9 +2796,11 @@ if (window.mydisc.aoAtualizacaoPronta) {
 // Lembra o nome usado da última vez
 const nomeSalvo = localStorage.getItem('mydisc-nome')
 if (nomeSalvo) $('campo-nome').value = nomeSalvo
+atualizarLobby()
 
 // Encerra as conexões direitinho ao fechar o aplicativo
+// (se eu segurava a sala, quem ficou assume: a sala não fecha)
 window.addEventListener('beforeunload', () => {
-  if (estado.souAnfitriao) { try { enviarParaTodos({ tipo: 'encerrando' }) } catch (_) { /* ignora */ } }
+  if (estado.souAnfitriao) { try { enviarParaTodos({ tipo: 'anfitriao-saindo' }) } catch (_) { /* ignora */ } }
   if (estado.peer) { try { estado.peer.destroy() } catch (_) { /* ignora */ } }
 })

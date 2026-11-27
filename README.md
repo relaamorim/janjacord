@@ -30,14 +30,26 @@ O Janjord ainda **não tem assinatura digital** — esse certificado custa caro 
 ## Como usar
 
 1. Abra o JanjaCord e escreva seu nome.
-2. Clique em **Criar uma sala** — você recebe um código de 6 letras (ex.: `KM3T7X`).
+2. Clique em **Criar uma sala** — você recebe um código de 6 letras (ex.: `KM3T7X`). Esse código **não muda nunca**.
 3. Mande o código para as pessoas (WhatsApp, e-mail, como preferir).
 4. Elas abrem o JanjaCord, digitam o código e clicam em **Entrar**.
 5. Pronto: todo mundo se ouve. Quem quiser mostra a tela clicando em **Compartilhar tela** — e podem ser **até duas telas ao mesmo tempo**.
 
+### Sala sempre aberta 🔓
+
+O **código da sala vale para sempre**. Combine um código com a turma uma única vez e usem sempre o mesmo:
+
+- Qualquer pessoa entra **a qualquer hora**, mesmo que quem criou a sala não esteja. Se a sala estiver vazia, quem chega primeiro a abre e espera os outros.
+- Depois da primeira vez, o JanjaCord mostra o botão **"Entrar na sala `<código>`"** — é um clique para voltar.
+- Se quem está "segurando" a sala (a pessoa com a **coroa** 👑) sair ou cair, **a sala não fecha**: outra pessoa assume sozinha em poucos segundos, e canais e chat continuam. A voz dá só uma engasgada rápida.
+- Dá para **escolher o próprio código**: digite qualquer combinação de 6 letras/números (ex.: `GALERA`) e clique em **Entrar**.
+- Os **canais de voz** criados ficam guardados no computador de quem esteve na sala e voltam quando ela é reaberta. O **chat** dura enquanto houver alguém na sala.
+
+> ⚠️ Quem tiver o código entra quando quiser — trate-o como a chave da sala. Se ele vazar, é só combinar um código novo.
+
 ### Canais de voz
 
-Toda sala nasce com o canal **Geral**, e o **anfitrião** pode criar mais canais (botão **+** na barra lateral, até 8). Cada pessoa clica no canal em que quer ficar — você só **ouve** e só **vê a tela** de quem está no mesmo canal que você. Cada canal pode ter suas próprias **duas transmissões** simultâneas. O chat de texto continua sendo um só, da sala inteira.
+Toda sala nasce com o canal **Geral**, e o **anfitrião** (quem está com a coroa no momento) pode criar mais canais (botão **+** na barra lateral, até 8). Cada pessoa clica no canal em que quer ficar — você só **ouve** e só **vê a tela** de quem está no mesmo canal que você. Cada canal pode ter suas próprias **duas transmissões** simultâneas. O chat de texto continua sendo um só, da sala inteira.
 
 ### Dicas
 
@@ -51,8 +63,8 @@ Toda sala nasce com o canal **Geral**, e o **anfitrião** pode criar mais canais
 - Na hora de compartilhar, dá para escolher **uma tela inteira ou só uma janela**, e marcar a caixinha para **transmitir também o som**. Os botões de compartilhar/parar e sair ficam no **canto inferior direito** do palco e, durante uma transmissão, só aparecem quando o mouse se mexe — para a tela ficar limpa.
 - **Dois cliques no vídeo** colocam a transmissão em tela cheia.
 - A bolinha do avatar **brilha em verde** quando a pessoa está falando.
-- A sala existe enquanto o **anfitrião** (quem criou) estiver nela. Se ele sair, a sala fecha.
-- **Quedas de conexão**: se a internet oscilar, o JanjaCord refaz sozinho as ligações de voz que caíram e reconecta com a sala (você vê "Reconectando…" no topo). Só depois de várias tentativas sem sucesso ele avisa para entrar de novo.
+- A sala **nunca fecha**: se o anfitrião sair, alguém que ficou assume a coroa automaticamente (veja "Sala sempre aberta" acima).
+- **Quedas de conexão**: se a internet oscilar, o JanjaCord refaz sozinho as ligações de voz que caíram e reconecta com a sala (você vê "Reconectando…" no topo). Se quem caiu foi o anfitrião, em cerca de 20 segundos outra pessoa assume. Só depois de um minuto e meio sem sucesso ele avisa para entrar de novo.
 - Clicar no **X** não fecha o JanjaCord: ele se recolhe para a **bandeja do sistema** (perto do relógio) e a chamada continua. Clique no ícone da bandeja para reabrir, ou clique nele com o botão direito e escolha **"Sair de vez"** para fechar de verdade.
 
 ## Como rodar em modo de desenvolvimento
@@ -99,8 +111,9 @@ Pronto: a versão sobe para o GitHub e todos os usuários recebem automaticament
 - **Electron** — transforma a interface (HTML/CSS/JS) em um aplicativo de Windows. É a mesma base do Discord, Slack e WhatsApp Desktop.
 - **WebRTC** — tecnologia de chamadas do navegador. O áudio e o vídeo vão **direto de um computador para o outro** (ponto a ponto), sem passar por servidor.
 - **PeerJS** — serviço gratuito usado só no começo, como "ponto de encontro": é ele que faz o código da sala levar até o computador do anfitrião.
+- **Sala sempre aberta** — o código da sala é um endereço fixo nesse ponto de encontro. Quem entra tenta primeiro ocupar o endereço: se conseguir, a sala estava vazia e a pessoa vira anfitriã; se já estiver ocupado, entra como convidada. Quando o anfitrião sai ou cai, todos os que ficaram tentam ocupar o endereço ao mesmo tempo — o serviço só o entrega a **um**, e os outros se religam a ele. Não existe servidor guardando a sala: ela "mora" em quem estiver dentro.
 - **Full HD** — a captura é pedida em 1920×1080 a 30 quadros/s, com prioridade para **manter a resolução** (texto nítido) mesmo se a rede oscilar. Como quem transmite envia uma cópia para cada espectador, o aplicativo **divide automaticamente** um orçamento de ~18 Mbps entre eles (com 2 espectadores, até 6 Mbps cada; com 9, cerca de 2 Mbps cada).
-- **Chat de texto** — as mensagens passam pelo anfitrião, que as distribui para todos e guarda as últimas 50 para mostrar a quem chegar depois.
+- **Chat de texto** — as mensagens passam pelo anfitrião, que as distribui para todos. Cada participante guarda as últimas 50, para mostrar a quem chegar depois caso passe a ser o anfitrião.
 - **Som de um aplicativo** — `nativo/janjacord-audio.cs` é um programinha em C# (compilado com o `csc.exe` que já vem no Windows: `npm run compilar-audio`) que usa a API *process loopback* do Windows para capturar o áudio de um único processo e entregá-lo ao JanjaCord, que o coloca na transmissão. O executável fica em `bin/` e vai fora do pacote do app (`asarUnpack`) para poder ser executado. Ele captura no formato de mixagem do dispositivo (ex.: 8 canais float em headsets 7.1), faz a redução para estéreo com coeficientes clássicos (sem o fator de normalização do Windows), compensa o volume da sessão do aplicativo no Mixer (até +20 dB) e entrega PCM 48 kHz, estéreo, 16 bits. Na interface, esse áudio entra num `AudioWorklet` com fila — que não depende dos temporizadores da página, desacelerados pelo Chromium quando a janela do JanjaCord está coberta pelo jogo — e a trilha resultante segue junto com o vídeo para os espectadores.
 
 ## Contribuindo
@@ -116,4 +129,6 @@ Achou um problema ou tem uma ideia? Abra uma [issue](https://github.com/relaamor
 - Em algumas redes muito restritas (certas empresas/universidades), a conexão direta entre computadores pode ser bloqueada. Nesses casos a chamada não completa — é uma limitação de rede, não do aplicativo.
 - O som do computador junto com a tela funciona no **Windows** (nos outros sistemas, só o vídeo).
 - Quem compartilha a tela envia uma cópia do vídeo para **cada** participante. A qualidade se ajusta sozinha ao número de espectadores, mas para uma sala cheia (9 espectadores) é bom que quem transmite tenha internet com **uns 20 Mbps de envio (upload)** — comum em conexões de fibra.
-- O chat não guarda histórico depois que a sala fecha (as mensagens vivem só durante a conversa).
+- O chat não guarda histórico depois que a sala esvazia (as mensagens vivem só enquanto houver alguém nela).
+- Quem ainda estiver numa **versão antiga** (até a 1.13) continua entrando nas salas normalmente, mas não consegue assumir a coroa — se só sobrarem pessoas em versão antiga quando o anfitrião sair, a sala cai para elas (basta entrar de novo com o mesmo código).
+- Se o anfitrião perder a internet de repente (em vez de fechar o aplicativo), o serviço de encontro pode levar até **1 minuto** para liberar o endereço da sala; nesse intervalo quem tentar entrar recebe "Não consegui entrar" e deve tentar de novo em instantes.

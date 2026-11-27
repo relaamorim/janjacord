@@ -201,6 +201,14 @@ input[type="text"]::placeholder { color: #5a637a; }
 }
 .botao-secundario:hover { background: #2a3049; }
 
+/* Código da sala escrito dentro do botão "Entrar na sala ..." */
+.codigo-no-botao {
+  letter-spacing: 2px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(4, 20, 13, 0.14);
+}
+
 .botao-fantasma {
   background: transparent;
   color: var(--texto-suave);

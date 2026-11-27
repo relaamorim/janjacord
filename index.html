@@ -41,9 +41,15 @@
           <input id="campo-nome" type="text" maxlength="24" placeholder="Como vão te ver na sala" autocomplete="off" spellcheck="false">
         </label>
 
+        <!-- Aparece para quem já esteve numa sala: volta nela com um clique -->
+        <button id="botao-minha-sala" class="botao botao-principal escondido" title="A sala fica sempre disponível: o código não muda">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M10 17l5-5-5-5v3H3v4h7v3zm9-14H11v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+          Entrar na sala <span id="texto-minha-sala" class="codigo-no-botao">------</span>
+        </button>
+
         <button id="botao-criar" class="botao botao-principal">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1z"/></svg>
-          Criar uma sala
+          <span id="texto-botao-criar">Criar uma sala</span>
         </button>
 
         <div class="divisor"><span>ou entre com um código</span></div>
@@ -54,7 +60,7 @@
         </div>
       </div>
 
-      <p class="lobby-rodape">Até 10 pessoas por sala · conexão direta entre os computadores</p>
+      <p class="lobby-rodape">Até 10 pessoas por sala · o código da sala vale para sempre</p>
     </div>
   </section>
 
